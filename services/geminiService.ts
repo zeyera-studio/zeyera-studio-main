@@ -1,46 +1,56 @@
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 import { ContentItem } from '../types';
 
 // Initialize the Gemini API client
-// API key must be obtained from process.env.API_KEY as per GenAI guidelines
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY || '';
+
+const genAI = apiKey ? new GoogleGenerativeAI(apiKey) : null;
 
 export const getAIRecommendations = async (query: string): Promise<ContentItem[]> => {
+  if (!genAI) {
+    console.warn("Gemini API key not configured. AI recommendations disabled.");
+    return [];
+  }
+
   try {
-    const model = "gemini-2.5-flash";
-    
-    const response = await ai.models.generateContent({
-      model: model,
-      contents: `Recommend 6 fictional or real movies/TV series based on this query: "${query}". 
-      Ensure a mix of Movies and TV Series. 
-      Return valid JSON.`,
-      config: {
+    const model = genAI.getGenerativeModel({
+      model: "gemini-1.5-flash",
+      generationConfig: {
         responseMimeType: "application/json",
         responseSchema: {
-          type: Type.OBJECT,
+          type: SchemaType.OBJECT,
           properties: {
             recommendations: {
-              type: Type.ARRAY,
+              type: SchemaType.ARRAY,
               items: {
-                type: Type.OBJECT,
+                type: SchemaType.OBJECT,
                 properties: {
-                  id: { type: Type.STRING },
-                  title: { type: Type.STRING },
-                  description: { type: Type.STRING },
-                  category: { type: Type.STRING, enum: ["Movie", "TV Series"] },
-                  rating: { type: Type.STRING },
-                  year: { type: Type.STRING },
-                  imageUrl: { type: Type.STRING, description: "A placeholder prompt for the image, not a URL" }
+                  id: { type: SchemaType.STRING },
+                  title: { type: SchemaType.STRING },
+                  description: { type: SchemaType.STRING },
+                  category: { type: SchemaType.STRING },
+                  rating: { type: SchemaType.STRING },
+                  year: { type: SchemaType.STRING },
+                  imageUrl: { type: SchemaType.STRING }
                 },
                 required: ["id", "title", "description", "category", "rating", "year"]
               }
             }
-          }
+          },
+          required: ["recommendations"]
         }
       }
     });
+    
+    const prompt = `Recommend 6 fictional or real movies/TV series based on this query: "${query}". 
+    Ensure a mix of Movies and TV Series. 
+    For category, use exactly "Movie" or "TV Series".
+    Return valid JSON.`;
 
-    const text = response.text;
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const text = response.text();
+    
     if (!text) return [];
 
     const data = JSON.parse(text);
