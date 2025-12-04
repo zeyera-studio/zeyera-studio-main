@@ -1,11 +1,19 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { ContentItem } from '../types';
 
-// Initialize the Gemini API client
-// API Key is expected to be in process.env.API_KEY
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Safely get the API Key from Vite environment or fallback to process.env
+// @ts-ignore
+const apiKey = (import.meta.env && import.meta.env.VITE_API_KEY) ? import.meta.env.VITE_API_KEY : process.env.API_KEY;
+
+if (!apiKey) {
+  console.warn("Missing Gemini API Key. Please set VITE_API_KEY in your environment variables.");
+}
+
+const ai = new GoogleGenAI({ apiKey: apiKey || '' });
 
 export const getAIRecommendations = async (query: string): Promise<ContentItem[]> => {
+  if (!apiKey) return [];
+  
   try {
     const model = "gemini-2.5-flash";
     
