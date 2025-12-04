@@ -2,7 +2,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { ContentItem } from '../types';
 
 // Initialize the Gemini API client
-// API Key is expected to be in process.env.API_KEY
+// API key must be obtained from process.env.API_KEY as per GenAI guidelines
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export const getAIRecommendations = async (query: string): Promise<ContentItem[]> => {
