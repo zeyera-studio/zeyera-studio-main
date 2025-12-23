@@ -8,6 +8,7 @@ interface UploadContentModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  defaultType?: 'Movie' | 'TV Series'; // Pre-select and lock to this type
 }
 
 interface EpisodeData {
@@ -22,9 +23,9 @@ interface EpisodeData {
   thumbnailPreview: string;
 }
 
-const UploadContentModal: React.FC<UploadContentModalProps> = ({ isOpen, onClose, onSuccess }) => {
-  // Tab state
-  const [activeTab, setActiveTab] = useState<'Movie' | 'TV Series'>('Movie');
+const UploadContentModal: React.FC<UploadContentModalProps> = ({ isOpen, onClose, onSuccess, defaultType }) => {
+  // Tab state - use defaultType if provided
+  const [activeTab, setActiveTab] = useState<'Movie' | 'TV Series'>(defaultType || 'Movie');
 
   // Common form state
   const [title, setTitle] = useState('');
@@ -323,7 +324,7 @@ const UploadContentModal: React.FC<UploadContentModalProps> = ({ isOpen, onClose
     setVideoFile(null);
     setEpisodes([]);
     setError('');
-    setActiveTab('Movie');
+    setActiveTab(defaultType || 'Movie');
   };
 
   const handleClose = () => {
@@ -351,31 +352,33 @@ const UploadContentModal: React.FC<UploadContentModalProps> = ({ isOpen, onClose
             </button>
           </div>
 
-          {/* Tabs */}
-          <div className="flex gap-2">
-            <button
-              onClick={() => setActiveTab('Movie')}
-              disabled={isUploading}
-              className={`px-6 py-2 rounded-lg font-medium transition-colors ${
-                activeTab === 'Movie'
-                  ? 'bg-neon-green text-black'
-                  : 'bg-white/5 text-gray-400 hover:text-white'
-              } disabled:opacity-50`}
-            >
-              Movie
-            </button>
-            <button
-              onClick={() => setActiveTab('TV Series')}
-              disabled={isUploading}
-              className={`px-6 py-2 rounded-lg font-medium transition-colors ${
-                activeTab === 'TV Series'
-                  ? 'bg-neon-green text-black'
-                  : 'bg-white/5 text-gray-400 hover:text-white'
-              } disabled:opacity-50`}
-            >
-              TV Series
-            </button>
-          </div>
+          {/* Tabs - Only show if no defaultType specified */}
+          {!defaultType && (
+            <div className="flex gap-2">
+              <button
+                onClick={() => setActiveTab('Movie')}
+                disabled={isUploading}
+                className={`px-6 py-2 rounded-lg font-medium transition-colors ${
+                  activeTab === 'Movie'
+                    ? 'bg-neon-green text-black'
+                    : 'bg-white/5 text-gray-400 hover:text-white'
+                } disabled:opacity-50`}
+              >
+                Movie
+              </button>
+              <button
+                onClick={() => setActiveTab('TV Series')}
+                disabled={isUploading}
+                className={`px-6 py-2 rounded-lg font-medium transition-colors ${
+                  activeTab === 'TV Series'
+                    ? 'bg-neon-green text-black'
+                    : 'bg-white/5 text-gray-400 hover:text-white'
+                } disabled:opacity-50`}
+              >
+                TV Series
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Form */}

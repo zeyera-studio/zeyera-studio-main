@@ -23,6 +23,7 @@ const AdminDashboard: React.FC = () => {
 
   // Content Management State
   const [isUploadModalOpen, setUploadModalOpen] = useState(false);
+  const [uploadType, setUploadType] = useState<'Movie' | 'TV Series'>('Movie');
   const [movies, setMovies] = useState<Content[]>([]);
   const [tvSeries, setTVSeries] = useState<Content[]>([]);
   const [episodeCounts, setEpisodeCounts] = useState<Record<string, number>>({});
@@ -448,7 +449,10 @@ const AdminDashboard: React.FC = () => {
                         <p className="text-gray-400">Upload and manage movies.</p>
                     </div>
                     <button
-                        onClick={() => setUploadModalOpen(true)}
+                        onClick={() => {
+                            setUploadType('Movie');
+                            setUploadModalOpen(true);
+                        }}
                         className="bg-neon-green text-black px-6 py-3 rounded-lg font-bold hover:bg-neon-green/80 transition-colors flex items-center gap-2"
                     >
                         <Upload size={18} />
@@ -574,7 +578,10 @@ const AdminDashboard: React.FC = () => {
                         <p className="text-gray-400">Upload and manage TV series with episodes.</p>
                     </div>
                     <button
-                        onClick={() => setUploadModalOpen(true)}
+                        onClick={() => {
+                            setUploadType('TV Series');
+                            setUploadModalOpen(true);
+                        }}
                         className="bg-neon-green text-black px-6 py-3 rounded-lg font-bold hover:bg-neon-green/80 transition-colors flex items-center gap-2"
                     >
                         <Upload size={18} />
@@ -718,6 +725,7 @@ const AdminDashboard: React.FC = () => {
             isOpen={isUploadModalOpen}
             onClose={() => setUploadModalOpen(false)}
             onSuccess={handleUploadSuccess}
+            defaultType={uploadType}
         />
 
         {/* Episode Management Modal */}
