@@ -95,3 +95,16 @@ export interface EpisodeStats {
   published: number;
   seasons: number;
 }
+
+// Comments System Types
+export interface Comment {
+  id: string;
+  content_id: string; // Foreign key to Content (Movie or TV Series)
+  user_id: string;
+  comment_text: string;
+  created_at: string;
+  updated_at: string;
+  // Joined data from profiles table
+  username?: string;
+  user_email?: string;
+}

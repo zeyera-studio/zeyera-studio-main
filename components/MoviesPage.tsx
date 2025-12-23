@@ -25,7 +25,7 @@ const MOCK_MOVIE_DATABASE = [
   { id: 's3', title: 'Neural Net', genre: 'Sci-Fi', rating: '4.6', year: '2024', image: 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?q=80&w=800&auto=format&fit=crop' },
 ];
 
-const CategorySection: React.FC<{ title: string; movies: typeof MOVIE_DATABASE }> = ({ title, movies }) => {
+const CategorySection: React.FC<{ title: string; movies: typeof MOVIE_DATABASE; onSelectMovie: (id: string) => void }> = ({ title, movies, onSelectMovie }) => {
   return (
     <div className="mb-12">
       <div className="flex items-center justify-between mb-6 px-4 md:px-8">
@@ -40,7 +40,7 @@ const CategorySection: React.FC<{ title: string; movies: typeof MOVIE_DATABASE }
       
       <div className="flex overflow-x-auto pb-8 px-4 md:px-8 gap-6 snap-x snap-mandatory hide-scrollbar" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
         {movies.map((movie) => (
-          <div key={movie.id} className="min-w-[220px] w-[220px] snap-center group cursor-pointer">
+          <div key={movie.id} className="min-w-[220px] w-[220px] snap-center group cursor-pointer" onClick={() => onSelectMovie(movie.id)}>
             <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-gray-900 mb-3 border border-white/5 group-hover:border-neon-green/50 transition-all duration-300 shadow-lg group-hover:shadow-[0_0_20px_rgba(57,255,20,0.15)]">
               <img src={movie.image} alt={movie.title} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
               <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent opacity-80"></div>
@@ -71,7 +71,11 @@ const CategorySection: React.FC<{ title: string; movies: typeof MOVIE_DATABASE }
   );
 };
 
-const MoviesPage: React.FC = () => {
+interface MoviesPageProps {
+  onSelectMovie: (movieId: string) => void;
+}
+
+const MoviesPage: React.FC<MoviesPageProps> = ({ onSelectMovie }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [dbMovies, setDbMovies] = useState<Content[]>([]);
   const [loading, setLoading] = useState(true);
@@ -174,10 +178,10 @@ const MoviesPage: React.FC = () => {
             </div>
         ) : (
             <>
-                {(!searchQuery || actionMovies.length > 0) && <CategorySection title="Action Packed" movies={actionMovies.length ? actionMovies : MOVIE_DATABASE.filter(m => m.genre === 'Action')} />}
-                {(!searchQuery || comedyMovies.length > 0) && <CategorySection title="Laugh Out Loud" movies={comedyMovies.length ? comedyMovies : MOVIE_DATABASE.filter(m => m.genre === 'Comedy')} />}
-                {(!searchQuery || romanceMovies.length > 0) && <CategorySection title="Romantic Getaways" movies={romanceMovies.length ? romanceMovies : MOVIE_DATABASE.filter(m => m.genre === 'Romance')} />}
-                {(!searchQuery || sciFiMovies.length > 0) && <CategorySection title="Sci-Fi Dimensions" movies={sciFiMovies.length ? sciFiMovies : MOVIE_DATABASE.filter(m => m.genre === 'Sci-Fi')} />}
+                {(!searchQuery || actionMovies.length > 0) && <CategorySection title="Action Packed" movies={actionMovies.length ? actionMovies : MOVIE_DATABASE.filter(m => m.genre === 'Action')} onSelectMovie={onSelectMovie} />}
+                {(!searchQuery || comedyMovies.length > 0) && <CategorySection title="Laugh Out Loud" movies={comedyMovies.length ? comedyMovies : MOVIE_DATABASE.filter(m => m.genre === 'Comedy')} onSelectMovie={onSelectMovie} />}
+                {(!searchQuery || romanceMovies.length > 0) && <CategorySection title="Romantic Getaways" movies={romanceMovies.length ? romanceMovies : MOVIE_DATABASE.filter(m => m.genre === 'Romance')} onSelectMovie={onSelectMovie} />}
+                {(!searchQuery || sciFiMovies.length > 0) && <CategorySection title="Sci-Fi Dimensions" movies={sciFiMovies.length ? sciFiMovies : MOVIE_DATABASE.filter(m => m.genre === 'Sci-Fi')} onSelectMovie={onSelectMovie} />}
             </>
         )}
       </div>
