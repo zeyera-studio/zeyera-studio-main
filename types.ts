@@ -22,3 +22,44 @@ export interface UserProfile {
   role: UserRole;
   created_at?: string;
 }
+
+// Content Management Types
+export type ContentStatus = 'unpublished' | 'published' | 'archived';
+export type ContentType = 'Movie' | 'TV Series';
+export type Genre = 'Action' | 'Comedy' | 'Romance' | 'Sci-Fi' | 'Drama' | 'Horror' | 'Thriller' | 'Fantasy' | 'Western';
+
+export interface Content {
+  id: string;
+  title: string;
+  description: string;
+  content_type: ContentType;
+  genre: Genre;
+  poster_url: string;
+  video_url?: string;
+  trailer_url?: string;
+  year?: string;
+  rating?: string;
+  duration?: string; // "2h 15m" or "3 Seasons"
+  cast_members?: string[]; // Renamed from 'cast' (SQL reserved keyword)
+  director?: string;
+  language?: string;
+  quality?: string;
+  status: ContentStatus;
+  uploaded_by?: string;
+  published_by?: string;
+  published_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UploadProgress {
+  poster?: number;
+  video?: number;
+}
+
+export interface ContentStats {
+  total: number;
+  unpublished: number;
+  published: number;
+  archived: number;
+}

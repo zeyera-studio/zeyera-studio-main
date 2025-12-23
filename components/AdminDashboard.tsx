@@ -2,8 +2,10 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabaseClient';
-import { Users, Film, Activity, Settings, Search, UserPlus, Shield, Trash2, LogOut } from 'lucide-react';
-import { UserProfile } from '../types';
+import { Users, Film, Activity, Settings, Search, UserPlus, Shield, Trash2, LogOut, Upload, Eye, Edit, CheckCircle, XCircle, Archive } from 'lucide-react';
+import { UserProfile, Content, ContentStats } from '../types';
+import UploadContentModal from './UploadContentModal';
+import { fetchContent, publishContent, unpublishContent, deleteContent, getContentStats } from '../lib/contentService';
 
 const AdminDashboard: React.FC = () => {
   const { user, profile, isAdmin, signOut } = useAuth();
@@ -17,9 +19,18 @@ const AdminDashboard: React.FC = () => {
   const [newAdminUsername, setNewAdminUsername] = useState('');
   const [adminCreationMsg, setAdminCreationMsg] = useState<{type: 'success'|'error', text: string} | null>(null);
 
+  // Content Management State
+  const [isUploadModalOpen, setUploadModalOpen] = useState(false);
+  const [unpublishedContent, setUnpublishedContent] = useState<Content[]>([]);
+  const [publishedContent, setPublishedContent] = useState<Content[]>([]);
+  const [contentStats, setContentStats] = useState<ContentStats>({ total: 0, unpublished: 0, published: 0, archived: 0 });
+  const [contentLoading, setContentLoading] = useState(false);
+
   useEffect(() => {
     if (activeTab === 'users') {
       fetchUsers();
+    } else if (activeTab === 'content') {
+      loadContent();
     }
   }, [activeTab]);
 
@@ -94,6 +105,59 @@ const AdminDashboard: React.FC = () => {
       // Revert if error
       fetchUsers();
     }
+  };
+
+  // Content Management Functions
+  const loadContent = async () => {
+    setContentLoading(true);
+    try {
+      const [unpub, pub, stats] = await Promise.all([
+        fetchContent('unpublished'),
+        fetchContent('published'),
+        getContentStats(),
+      ]);
+      setUnpublishedContent(unpub);
+      setPublishedContent(pub);
+      setContentStats(stats);
+    } catch (error) {
+      console.error('Error loading content:', error);
+    } finally {
+      setContentLoading(false);
+    }
+  };
+
+  const handlePublish = async (id: string) => {
+    try {
+      await publishContent(id);
+      await loadContent(); // Reload content
+    } catch (error: any) {
+      alert(error.message || 'Failed to publish content');
+    }
+  };
+
+  const handleUnpublish = async (id: string) => {
+    try {
+      await unpublishContent(id);
+      await loadContent(); // Reload content
+    } catch (error: any) {
+      alert(error.message || 'Failed to unpublish content');
+    }
+  };
+
+  const handleDelete = async (id: string, title: string) => {
+    if (!confirm(`Are you sure you want to delete "${title}"? This action cannot be undone.`)) {
+      return;
+    }
+    try {
+      await deleteContent(id);
+      await loadContent(); // Reload content
+    } catch (error: any) {
+      alert(error.message || 'Failed to delete content');
+    }
+  };
+
+  const handleUploadSuccess = () => {
+    loadContent(); // Reload content after upload
   };
 
   if (!isAdmin) {
@@ -327,14 +391,158 @@ const AdminDashboard: React.FC = () => {
             </div>
         )}
 
-        {/* Content Tab (Placeholder) */}
+        {/* Content Management Tab */}
         {activeTab === 'content' && (
-            <div className="text-center py-20">
-                <Film className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-                <h3 className="text-xl font-bold text-gray-300">Content Library Management</h3>
-                <p className="text-gray-500 mt-2">Connecting to media database...</p>
+            <div className="space-y-8">
+                <header className="flex justify-between items-center">
+                    <div>
+                        <h1 className="text-3xl font-bold mb-2">Content Management</h1>
+                        <p className="text-gray-400">Upload and manage movies & TV series.</p>
+                    </div>
+                    <button
+                        onClick={() => setUploadModalOpen(true)}
+                        className="bg-neon-green text-black px-6 py-3 rounded-lg font-bold hover:bg-neon-green/80 transition-colors flex items-center gap-2"
+                    >
+                        <Upload size={18} />
+                        Upload New Content
+                    </button>
+                </header>
+
+                {/* Stats Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div className="bg-[#111] p-4 rounded-xl border border-white/10">
+                        <h3 className="text-gray-400 text-xs font-medium uppercase tracking-wider mb-1">Total Content</h3>
+                        <p className="text-2xl font-black text-white">{contentStats.total}</p>
+                    </div>
+                    <div className="bg-[#111] p-4 rounded-xl border border-white/10">
+                        <h3 className="text-gray-400 text-xs font-medium uppercase tracking-wider mb-1">Unpublished</h3>
+                        <p className="text-2xl font-black text-yellow-500">{contentStats.unpublished}</p>
+                    </div>
+                    <div className="bg-[#111] p-4 rounded-xl border border-white/10">
+                        <h3 className="text-gray-400 text-xs font-medium uppercase tracking-wider mb-1">Published</h3>
+                        <p className="text-2xl font-black text-green-500">{contentStats.published}</p>
+                    </div>
+                    <div className="bg-[#111] p-4 rounded-xl border border-white/10">
+                        <h3 className="text-gray-400 text-xs font-medium uppercase tracking-wider mb-1">Archived</h3>
+                        <p className="text-2xl font-black text-gray-500">{contentStats.archived}</p>
+                    </div>
+                </div>
+
+                {/* Unpublished Content */}
+                <div className="space-y-4">
+                    <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                        <div className="w-1 h-5 bg-yellow-500 rounded-full"></div>
+                        Unpublished Content ({unpublishedContent.length})
+                    </h2>
+                    {contentLoading ? (
+                        <div className="text-center py-12 text-gray-500">Loading...</div>
+                    ) : unpublishedContent.length === 0 ? (
+                        <div className="bg-[#111] border border-white/10 rounded-xl p-12 text-center text-gray-500">
+                            No unpublished content. Upload something new!
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                            {unpublishedContent.map((content) => (
+                                <div key={content.id} className="bg-[#111] border border-white/10 rounded-xl overflow-hidden group hover:border-yellow-500/50 transition-colors">
+                                    <div className="relative aspect-[2/3] bg-gray-900">
+                                        <img src={content.poster_url} alt={content.title} className="w-full h-full object-cover" />
+                                        <div className="absolute top-2 right-2 bg-yellow-500/90 backdrop-blur-sm px-2 py-1 rounded text-xs font-bold text-black">
+                                            DRAFT
+                                        </div>
+                                    </div>
+                                    <div className="p-4 space-y-3">
+                                        <div>
+                                            <h3 className="font-bold text-white truncate">{content.title}</h3>
+                                            <p className="text-xs text-gray-500">{content.genre} • {content.content_type}</p>
+                                            {content.year && <p className="text-xs text-gray-600">{content.year}</p>}
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={() => handlePublish(content.id)}
+                                                className="flex-1 bg-neon-green hover:bg-neon-green/80 text-black px-3 py-2 rounded text-xs font-bold transition-colors flex items-center justify-center gap-1"
+                                            >
+                                                <CheckCircle size={14} />
+                                                Publish
+                                            </button>
+                                            <button
+                                                onClick={() => handleDelete(content.id, content.title)}
+                                                className="bg-red-500/20 hover:bg-red-500/30 text-red-400 px-3 py-2 rounded text-xs font-bold transition-colors"
+                                            >
+                                                <Trash2 size={14} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
+                {/* Published Content */}
+                <div className="space-y-4">
+                    <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                        <div className="w-1 h-5 bg-neon-green rounded-full"></div>
+                        Published Content ({publishedContent.length})
+                    </h2>
+                    {contentLoading ? (
+                        <div className="text-center py-12 text-gray-500">Loading...</div>
+                    ) : publishedContent.length === 0 ? (
+                        <div className="bg-[#111] border border-white/10 rounded-xl p-12 text-center text-gray-500">
+                            No published content yet.
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                            {publishedContent.map((content) => (
+                                <div key={content.id} className="bg-[#111] border border-white/10 rounded-xl overflow-hidden group hover:border-neon-green/50 transition-colors">
+                                    <div className="relative aspect-[2/3] bg-gray-900">
+                                        <img src={content.poster_url} alt={content.title} className="w-full h-full object-cover" />
+                                        <div className="absolute top-2 right-2 bg-neon-green/90 backdrop-blur-sm px-2 py-1 rounded text-xs font-bold text-black">
+                                            LIVE
+                                        </div>
+                                        {content.rating && (
+                                            <div className="absolute top-2 left-2 bg-black/60 backdrop-blur-sm px-2 py-1 rounded text-xs font-bold text-white">
+                                                ⭐ {content.rating}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="p-4 space-y-3">
+                                        <div>
+                                            <h3 className="font-bold text-white truncate">{content.title}</h3>
+                                            <p className="text-xs text-gray-500">{content.genre} • {content.content_type}</p>
+                                            {content.published_at && (
+                                                <p className="text-xs text-gray-600">Published {new Date(content.published_at).toLocaleDateString()}</p>
+                                            )}
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={() => handleUnpublish(content.id)}
+                                                className="flex-1 bg-white/10 hover:bg-white/20 text-white px-3 py-2 rounded text-xs font-bold transition-colors flex items-center justify-center gap-1"
+                                            >
+                                                <XCircle size={14} />
+                                                Unpublish
+                                            </button>
+                                            <button
+                                                onClick={() => handleDelete(content.id, content.title)}
+                                                className="bg-red-500/20 hover:bg-red-500/30 text-red-400 px-3 py-2 rounded text-xs font-bold transition-colors"
+                                            >
+                                                <Trash2 size={14} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
             </div>
         )}
+
+        {/* Upload Modal */}
+        <UploadContentModal
+            isOpen={isUploadModalOpen}
+            onClose={() => setUploadModalOpen(false)}
+            onSuccess={handleUploadSuccess}
+        />
 
       </main>
     </div>

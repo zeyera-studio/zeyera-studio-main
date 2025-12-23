@@ -1,9 +1,11 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Search, Filter, Star, Play, ChevronDown } from 'lucide-react';
+import { Content } from '../types';
+import { fetchContent } from '../lib/contentService';
 
-// Mock data for TV Series
-const TV_DATABASE = [
+// Mock data for TV Series (fallback)
+const MOCK_TV_DATABASE = [
   { id: 't1', title: 'Quantum Rift', genre: 'Sci-Fi', rating: '4.8', year: '2024', image: 'https://picsum.photos/seed/quant/300/450', seasons: '3 Seasons' },
   { id: 't2', title: 'Desert Wind', genre: 'Western', rating: '4.5', year: '2021', image: 'https://picsum.photos/seed/des/300/450', seasons: '1 Season' },
   { id: 't3', title: 'Whispering Woods', genre: 'Horror', rating: '4.2', year: '2023', image: 'https://picsum.photos/seed/wood/300/450', seasons: '2 Seasons' },
@@ -71,6 +73,39 @@ const CategorySection: React.FC<{ title: string; shows: typeof TV_DATABASE }> = 
 
 const TVSeriesPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
+  const [dbShows, setDbShows] = useState<Content[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Fetch TV series from database on mount
+  useEffect(() => {
+    const loadTVShows = async () => {
+      try {
+        const shows = await fetchContent('published', 'TV Series');
+        setDbShows(shows);
+      } catch (error) {
+        console.error('Error loading TV series:', error);
+        // Fallback to mock data on error
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadTVShows();
+  }, []);
+
+  // Convert database content to display format and merge with mock data
+  const convertToDisplayFormat = (content: Content) => ({
+    id: content.id,
+    title: content.title,
+    genre: content.genre,
+    rating: content.rating || '4.5',
+    year: content.year || '2024',
+    image: content.poster_url,
+    seasons: content.duration || '1 Season',
+  });
+
+  // Merge database content with mock data (database first)
+  const dbShowsFormatted = dbShows.map(convertToDisplayFormat);
+  const TV_DATABASE = [...dbShowsFormatted, ...MOCK_TV_DATABASE];
 
   // Filter data based on search
   const filteredShows = TV_DATABASE.filter(m => m.title.toLowerCase().includes(searchQuery.toLowerCase()));

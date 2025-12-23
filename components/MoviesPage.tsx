@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Search, Filter, Star, Play, Info, ChevronDown } from 'lucide-react';
+import { Content } from '../types';
+import { fetchContent } from '../lib/contentService';
 
-// Extended mock data for the movies page to populate categories
-const MOVIE_DATABASE = [
+// Extended mock data for the movies page to populate categories (fallback)
+const MOCK_MOVIE_DATABASE = [
   { id: 'm1', title: 'Cyber Strike', genre: 'Action', rating: '4.8', year: '2024', image: 'https://images.unsplash.com/photo-1535016120720-40c6874c3b13?q=80&w=800&auto=format&fit=crop' },
   { id: 'm2', title: 'The Last Duel', genre: 'Action', rating: '4.5', year: '2023', image: 'https://images.unsplash.com/photo-1596727147705-5d353c6805a5?q=80&w=800&auto=format&fit=crop' },
   { id: 'm3', title: 'Speed Demon', genre: 'Action', rating: '4.2', year: '2024', image: 'https://images.unsplash.com/photo-1568605114967-8130f3a36994?q=80&w=800&auto=format&fit=crop' },
@@ -71,6 +73,38 @@ const CategorySection: React.FC<{ title: string; movies: typeof MOVIE_DATABASE }
 
 const MoviesPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
+  const [dbMovies, setDbMovies] = useState<Content[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Fetch movies from database on mount
+  useEffect(() => {
+    const loadMovies = async () => {
+      try {
+        const movies = await fetchContent('published', 'Movie');
+        setDbMovies(movies);
+      } catch (error) {
+        console.error('Error loading movies:', error);
+        // Fallback to mock data on error
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadMovies();
+  }, []);
+
+  // Convert database content to display format and merge with mock data
+  const convertToDisplayFormat = (content: Content) => ({
+    id: content.id,
+    title: content.title,
+    genre: content.genre,
+    rating: content.rating || '4.5',
+    year: content.year || '2024',
+    image: content.poster_url,
+  });
+
+  // Merge database content with mock data (database first)
+  const dbMoviesFormatted = dbMovies.map(convertToDisplayFormat);
+  const MOVIE_DATABASE = [...dbMoviesFormatted, ...MOCK_MOVIE_DATABASE];
 
   // Filter data based on search
   const filteredMovies = MOVIE_DATABASE.filter(m => m.title.toLowerCase().includes(searchQuery.toLowerCase()));
