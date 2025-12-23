@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Play, Clock, Star, Calendar, Globe, Film, Users, ArrowLeft, ChevronDown, ChevronUp } from 'lucide-react';
 import { Content, Episode, SeasonGroup } from '../types';
 import { supabase } from '../lib/supabaseClient';
-import { fetchEpisodesByContentId } from '../lib/episodeService';
+import { fetchEpisodesBySeries } from '../lib/episodeService';
 import VideoPlayerModal from './VideoPlayerModal';
 import CommentsSection from './CommentsSection';
 
@@ -47,7 +47,7 @@ const TVSeriesDetailPage: React.FC<TVSeriesDetailPageProps> = ({ seriesId, onBac
       setSeries(seriesData as Content);
 
       // Load episodes
-      const episodesData = await fetchEpisodesByContentId(seriesId, 'published');
+      const episodesData = await fetchEpisodesBySeries(seriesId, 'published');
       setEpisodes(episodesData);
 
       // Group episodes by season
