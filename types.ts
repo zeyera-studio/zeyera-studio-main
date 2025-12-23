@@ -63,3 +63,35 @@ export interface ContentStats {
   published: number;
   archived: number;
 }
+
+// Episode Management Types
+export type EpisodeStatus = 'unpublished' | 'published' | 'archived';
+
+export interface Episode {
+  id: string;
+  content_id: string; // Foreign key to Content (TV Series)
+  season_number: number;
+  episode_number: number;
+  title: string;
+  description: string;
+  video_url: string; // Required for episodes
+  thumbnail_url?: string; // Optional, falls back to series poster
+  duration?: string; // e.g., "45m", "1h 15m"
+  status: EpisodeStatus;
+  uploaded_by?: string;
+  published_by?: string;
+  published_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SeasonGroup {
+  seasonNumber: number;
+  episodes: Episode[];
+}
+
+export interface EpisodeStats {
+  total: number;
+  published: number;
+  seasons: number;
+}
