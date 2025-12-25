@@ -1,9 +1,11 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Search, Filter, Star, Play, ChevronDown } from 'lucide-react';
+import { Content } from '../types';
+import { fetchContent } from '../lib/contentService';
 
-// Mock data for TV Series
-const TV_DATABASE = [
+// Mock data for TV Series (fallback)
+const MOCK_TV_DATABASE = [
   { id: 't1', title: 'Quantum Rift', genre: 'Sci-Fi', rating: '4.8', year: '2024', image: 'https://picsum.photos/seed/quant/300/450', seasons: '3 Seasons' },
   { id: 't2', title: 'Desert Wind', genre: 'Western', rating: '4.5', year: '2021', image: 'https://picsum.photos/seed/des/300/450', seasons: '1 Season' },
   { id: 't3', title: 'Whispering Woods', genre: 'Horror', rating: '4.2', year: '2023', image: 'https://picsum.photos/seed/wood/300/450', seasons: '2 Seasons' },
@@ -23,7 +25,7 @@ const TV_DATABASE = [
   { id: 's3', title: 'Neon Genesis', genre: 'Sci-Fi', rating: '4.7', year: '2025', image: 'https://images.unsplash.com/photo-1563089145-599997674d42?q=80&w=800&auto=format&fit=crop', seasons: '1 Season' },
 ];
 
-const CategorySection: React.FC<{ title: string; shows: typeof TV_DATABASE }> = ({ title, shows }) => {
+const CategorySection: React.FC<{ title: string; shows: typeof TV_DATABASE; onSelectSeries: (id: string) => void }> = ({ title, shows, onSelectSeries }) => {
   return (
     <div className="mb-12">
       <div className="flex items-center justify-between mb-6 px-4 md:px-8">
@@ -38,7 +40,7 @@ const CategorySection: React.FC<{ title: string; shows: typeof TV_DATABASE }> = 
       
       <div className="flex overflow-x-auto pb-8 px-4 md:px-8 gap-6 snap-x snap-mandatory hide-scrollbar" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
         {shows.map((show) => (
-          <div key={show.id} className="min-w-[220px] w-[220px] snap-center group cursor-pointer">
+          <div key={show.id} className="min-w-[220px] w-[220px] snap-center group cursor-pointer" onClick={() => onSelectSeries(show.id)}>
             <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-gray-900 mb-3 border border-white/5 group-hover:border-neon-green/50 transition-all duration-300 shadow-lg group-hover:shadow-[0_0_20px_rgba(57,255,20,0.15)]">
               <img src={show.image} alt={show.title} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
               <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent opacity-80"></div>
@@ -69,8 +71,45 @@ const CategorySection: React.FC<{ title: string; shows: typeof TV_DATABASE }> = 
   );
 };
 
-const TVSeriesPage: React.FC = () => {
+interface TVSeriesPageProps {
+  onSelectSeries: (seriesId: string) => void;
+}
+
+const TVSeriesPage: React.FC<TVSeriesPageProps> = ({ onSelectSeries }) => {
   const [searchQuery, setSearchQuery] = useState('');
+  const [dbShows, setDbShows] = useState<Content[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Fetch TV series from database on mount
+  useEffect(() => {
+    const loadTVShows = async () => {
+      try {
+        const shows = await fetchContent('published', 'TV Series');
+        setDbShows(shows);
+      } catch (error) {
+        console.error('Error loading TV series:', error);
+        // Fallback to mock data on error
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadTVShows();
+  }, []);
+
+  // Convert database content to display format and merge with mock data
+  const convertToDisplayFormat = (content: Content) => ({
+    id: content.id,
+    title: content.title,
+    genre: content.genre,
+    rating: content.rating || '4.5',
+    year: content.year || '2024',
+    image: content.poster_url,
+    seasons: content.duration || '1 Season',
+  });
+
+  // Merge database content with mock data (database first)
+  const dbShowsFormatted = dbShows.map(convertToDisplayFormat);
+  const TV_DATABASE = [...dbShowsFormatted, ...MOCK_TV_DATABASE];
 
   // Filter data based on search
   const filteredShows = TV_DATABASE.filter(m => m.title.toLowerCase().includes(searchQuery.toLowerCase()));
@@ -140,10 +179,10 @@ const TVSeriesPage: React.FC = () => {
             </div>
         ) : (
             <>
-                {(!searchQuery || sciFiShows.length > 0) && <CategorySection title="Futuristic Worlds" shows={sciFiShows.length ? sciFiShows : TV_DATABASE.filter(m => m.genre === 'Sci-Fi')} />}
-                {(!searchQuery || dramaShows.length > 0) && <CategorySection title="Intense Dramas" shows={dramaShows.length ? dramaShows : TV_DATABASE.filter(m => m.genre === 'Drama')} />}
-                {(!searchQuery || comedyShows.length > 0) && <CategorySection title="Comedy Central" shows={comedyShows.length ? comedyShows : TV_DATABASE.filter(m => m.genre === 'Comedy')} />}
-                {(!searchQuery || otherShows.length > 0) && <CategorySection title="Staff Picks" shows={otherShows.length ? otherShows : TV_DATABASE.filter(m => !['Sci-Fi', 'Drama', 'Comedy'].includes(m.genre))} />}
+                {(!searchQuery || sciFiShows.length > 0) && <CategorySection title="Futuristic Worlds" shows={sciFiShows.length ? sciFiShows : TV_DATABASE.filter(m => m.genre === 'Sci-Fi')} onSelectSeries={onSelectSeries} />}
+                {(!searchQuery || dramaShows.length > 0) && <CategorySection title="Intense Dramas" shows={dramaShows.length ? dramaShows : TV_DATABASE.filter(m => m.genre === 'Drama')} onSelectSeries={onSelectSeries} />}
+                {(!searchQuery || comedyShows.length > 0) && <CategorySection title="Comedy Central" shows={comedyShows.length ? comedyShows : TV_DATABASE.filter(m => m.genre === 'Comedy')} onSelectSeries={onSelectSeries} />}
+                {(!searchQuery || otherShows.length > 0) && <CategorySection title="Staff Picks" shows={otherShows.length ? otherShows : TV_DATABASE.filter(m => !['Sci-Fi', 'Drama', 'Comedy'].includes(m.genre))} onSelectSeries={onSelectSeries} />}
             </>
         )}
       </div>

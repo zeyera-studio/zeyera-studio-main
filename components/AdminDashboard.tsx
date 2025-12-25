@@ -2,12 +2,16 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabaseClient';
-import { Users, Film, Activity, Settings, Search, UserPlus, Shield, Trash2, LogOut } from 'lucide-react';
-import { UserProfile } from '../types';
+import { Users, Film, Activity, Settings, Search, UserPlus, Shield, Trash2, LogOut, Upload, Eye, Edit, CheckCircle, XCircle, Archive, Tv, List } from 'lucide-react';
+import { UserProfile, Content, ContentStats } from '../types';
+import UploadContentModal from './UploadContentModal';
+import EpisodeManagement from './EpisodeManagement';
+import { fetchContent, publishContent, unpublishContent, deleteContent, getContentStats } from '../lib/contentService';
+import { getEpisodeCount } from '../lib/episodeService';
 
 const AdminDashboard: React.FC = () => {
   const { user, profile, isAdmin, signOut } = useAuth();
-  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'content'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'movies' | 'tvseries'>('overview');
   const [usersList, setUsersList] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(false);
   
@@ -17,9 +21,22 @@ const AdminDashboard: React.FC = () => {
   const [newAdminUsername, setNewAdminUsername] = useState('');
   const [adminCreationMsg, setAdminCreationMsg] = useState<{type: 'success'|'error', text: string} | null>(null);
 
+  // Content Management State
+  const [isUploadModalOpen, setUploadModalOpen] = useState(false);
+  const [uploadType, setUploadType] = useState<'Movie' | 'TV Series'>('Movie');
+  const [movies, setMovies] = useState<Content[]>([]);
+  const [tvSeries, setTVSeries] = useState<Content[]>([]);
+  const [episodeCounts, setEpisodeCounts] = useState<Record<string, number>>({});
+  const [contentLoading, setContentLoading] = useState(false);
+  const [selectedSeries, setSelectedSeries] = useState<Content | null>(null);
+
   useEffect(() => {
     if (activeTab === 'users') {
       fetchUsers();
+    } else if (activeTab === 'movies') {
+      loadMovies();
+    } else if (activeTab === 'tvseries') {
+      loadTVSeries();
     }
   }, [activeTab]);
 
@@ -96,6 +113,95 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
+  // Content Management Functions
+  const loadMovies = async () => {
+    setContentLoading(true);
+    try {
+      const allMovies = await fetchContent(undefined, 'Movie');
+      setMovies(allMovies);
+    } catch (error) {
+      console.error('Error loading movies:', error);
+    } finally {
+      setContentLoading(false);
+    }
+  };
+
+  const loadTVSeries = async () => {
+    setContentLoading(true);
+    try {
+      const allSeries = await fetchContent(undefined, 'TV Series');
+      setTVSeries(allSeries);
+      
+      // Load episode counts for each series
+      const counts: Record<string, number> = {};
+      await Promise.all(
+        allSeries.map(async (series) => {
+          const count = await getEpisodeCount(series.id);
+          counts[series.id] = count;
+        })
+      );
+      setEpisodeCounts(counts);
+    } catch (error) {
+      console.error('Error loading TV series:', error);
+    } finally {
+      setContentLoading(false);
+    }
+  };
+
+  const handlePublish = async (id: string) => {
+    try {
+      await publishContent(id);
+      if (activeTab === 'movies') {
+        await loadMovies();
+      } else if (activeTab === 'tvseries') {
+        await loadTVSeries();
+      }
+    } catch (error: any) {
+      alert(error.message || 'Failed to publish content');
+    }
+  };
+
+  const handleUnpublish = async (id: string) => {
+    try {
+      await unpublishContent(id);
+      if (activeTab === 'movies') {
+        await loadMovies();
+      } else if (activeTab === 'tvseries') {
+        await loadTVSeries();
+      }
+    } catch (error: any) {
+      alert(error.message || 'Failed to unpublish content');
+    }
+  };
+
+  const handleDelete = async (id: string, title: string) => {
+    if (!confirm(`Are you sure you want to delete "${title}"? This action cannot be undone.`)) {
+      return;
+    }
+    try {
+      await deleteContent(id);
+      if (activeTab === 'movies') {
+        await loadMovies();
+      } else if (activeTab === 'tvseries') {
+        await loadTVSeries();
+      }
+    } catch (error: any) {
+      alert(error.message || 'Failed to delete content');
+    }
+  };
+
+  const handleUploadSuccess = () => {
+    if (activeTab === 'movies') {
+      loadMovies();
+    } else if (activeTab === 'tvseries') {
+      loadTVSeries();
+    }
+  };
+
+  const handleManageEpisodes = (series: Content) => {
+    setSelectedSeries(series);
+  };
+
   if (!isAdmin) {
     return (
         <div className="min-h-screen bg-[#050505] flex items-center justify-center">
@@ -134,11 +240,18 @@ const AdminDashboard: React.FC = () => {
                 <span className="font-medium text-sm">User Management</span>
             </button>
             <button 
-                onClick={() => setActiveTab('content')}
-                className={`flex items-center gap-3 w-full px-4 py-3 rounded-lg transition-colors ${activeTab === 'content' ? 'bg-neon-green/10 text-neon-green border border-neon-green/20' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
+                onClick={() => setActiveTab('movies')}
+                className={`flex items-center gap-3 w-full px-4 py-3 rounded-lg transition-colors ${activeTab === 'movies' ? 'bg-neon-green/10 text-neon-green border border-neon-green/20' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
             >
                 <Film size={18} />
-                <span className="font-medium text-sm">Content Library</span>
+                <span className="font-medium text-sm">Movies</span>
+            </button>
+            <button 
+                onClick={() => setActiveTab('tvseries')}
+                className={`flex items-center gap-3 w-full px-4 py-3 rounded-lg transition-colors ${activeTab === 'tvseries' ? 'bg-neon-green/10 text-neon-green border border-neon-green/20' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
+            >
+                <Tv size={18} />
+                <span className="font-medium text-sm">TV Series</span>
             </button>
         </nav>
 
@@ -327,13 +440,304 @@ const AdminDashboard: React.FC = () => {
             </div>
         )}
 
-        {/* Content Tab (Placeholder) */}
-        {activeTab === 'content' && (
-            <div className="text-center py-20">
-                <Film className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-                <h3 className="text-xl font-bold text-gray-300">Content Library Management</h3>
-                <p className="text-gray-500 mt-2">Connecting to media database...</p>
+        {/* Movies Management Tab */}
+        {activeTab === 'movies' && (
+            <div className="space-y-8">
+                <header className="flex justify-between items-center">
+                    <div>
+                        <h1 className="text-3xl font-bold mb-2">Movies Management</h1>
+                        <p className="text-gray-400">Upload and manage movies.</p>
+                    </div>
+                    <button
+                        onClick={() => {
+                            setUploadType('Movie');
+                            setUploadModalOpen(true);
+                        }}
+                        className="bg-neon-green text-black px-6 py-3 rounded-lg font-bold hover:bg-neon-green/80 transition-colors flex items-center gap-2"
+                    >
+                        <Upload size={18} />
+                        Upload Movie
+                    </button>
+                </header>
+
+                {/* Unpublished Movies */}
+                <div className="space-y-4">
+                    <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                        <div className="w-1 h-5 bg-yellow-500 rounded-full"></div>
+                        Unpublished Movies ({movies.filter((m) => m.status === 'unpublished').length})
+                    </h2>
+                    {contentLoading ? (
+                        <div className="text-center py-12 text-gray-500">Loading...</div>
+                    ) : movies.filter((m) => m.status === 'unpublished').length === 0 ? (
+                        <div className="bg-[#111] border border-white/10 rounded-xl p-12 text-center text-gray-500">
+                            No unpublished movies.
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                            {movies.filter((m) => m.status === 'unpublished').map((movie) => (
+                                <div key={movie.id} className="bg-[#111] border border-white/10 rounded-xl overflow-hidden group hover:border-yellow-500/50 transition-colors">
+                                    <div className="relative aspect-[2/3] bg-gray-900">
+                                        <img src={movie.poster_url} alt={movie.title} className="w-full h-full object-cover" />
+                                        <div className="absolute top-2 right-2 bg-yellow-500/90 backdrop-blur-sm px-2 py-1 rounded text-xs font-bold text-black">
+                                            DRAFT
+                                        </div>
+                                    </div>
+                                    <div className="p-4 space-y-3">
+                                        <div>
+                                            <h3 className="font-bold text-white truncate">{movie.title}</h3>
+                                            <p className="text-xs text-gray-500">{movie.genre}</p>
+                                            {movie.year && <p className="text-xs text-gray-600">{movie.year}</p>}
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={() => handlePublish(movie.id)}
+                                                className="flex-1 bg-neon-green hover:bg-neon-green/80 text-black px-3 py-2 rounded text-xs font-bold transition-colors flex items-center justify-center gap-1"
+                                            >
+                                                <CheckCircle size={14} />
+                                                Publish
+                                            </button>
+                                            <button
+                                                onClick={() => handleDelete(movie.id, movie.title)}
+                                                className="bg-red-500/20 hover:bg-red-500/30 text-red-400 px-3 py-2 rounded text-xs font-bold transition-colors"
+                                            >
+                                                <Trash2 size={14} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
+                {/* Published Movies */}
+                <div className="space-y-4">
+                    <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                        <div className="w-1 h-5 bg-neon-green rounded-full"></div>
+                        Published Movies ({movies.filter((m) => m.status === 'published').length})
+                    </h2>
+                    {contentLoading ? (
+                        <div className="text-center py-12 text-gray-500">Loading...</div>
+                    ) : movies.filter((m) => m.status === 'published').length === 0 ? (
+                        <div className="bg-[#111] border border-white/10 rounded-xl p-12 text-center text-gray-500">
+                            No published movies yet.
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                            {movies.filter((m) => m.status === 'published').map((movie) => (
+                                <div key={movie.id} className="bg-[#111] border border-white/10 rounded-xl overflow-hidden group hover:border-neon-green/50 transition-colors">
+                                    <div className="relative aspect-[2/3] bg-gray-900">
+                                        <img src={movie.poster_url} alt={movie.title} className="w-full h-full object-cover" />
+                                        <div className="absolute top-2 right-2 bg-neon-green/90 backdrop-blur-sm px-2 py-1 rounded text-xs font-bold text-black">
+                                            LIVE
+                                        </div>
+                                        {movie.rating && (
+                                            <div className="absolute top-2 left-2 bg-black/60 backdrop-blur-sm px-2 py-1 rounded text-xs font-bold text-white">
+                                                ⭐ {movie.rating}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="p-4 space-y-3">
+                                        <div>
+                                            <h3 className="font-bold text-white truncate">{movie.title}</h3>
+                                            <p className="text-xs text-gray-500">{movie.genre}</p>
+                                            {movie.published_at && (
+                                                <p className="text-xs text-gray-600">Published {new Date(movie.published_at).toLocaleDateString()}</p>
+                                            )}
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={() => handleUnpublish(movie.id)}
+                                                className="flex-1 bg-white/10 hover:bg-white/20 text-white px-3 py-2 rounded text-xs font-bold transition-colors flex items-center justify-center gap-1"
+                                            >
+                                                <XCircle size={14} />
+                                                Unpublish
+                                            </button>
+                                            <button
+                                                onClick={() => handleDelete(movie.id, movie.title)}
+                                                className="bg-red-500/20 hover:bg-red-500/30 text-red-400 px-3 py-2 rounded text-xs font-bold transition-colors"
+                                            >
+                                                <Trash2 size={14} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
             </div>
+        )}
+
+        {/* TV Series Management Tab */}
+        {activeTab === 'tvseries' && (
+            <div className="space-y-8">
+                <header className="flex justify-between items-center">
+                    <div>
+                        <h1 className="text-3xl font-bold mb-2">TV Series Management</h1>
+                        <p className="text-gray-400">Upload and manage TV series with episodes.</p>
+                    </div>
+                    <button
+                        onClick={() => {
+                            setUploadType('TV Series');
+                            setUploadModalOpen(true);
+                        }}
+                        className="bg-neon-green text-black px-6 py-3 rounded-lg font-bold hover:bg-neon-green/80 transition-colors flex items-center gap-2"
+                    >
+                        <Upload size={18} />
+                        Upload TV Series
+                    </button>
+                </header>
+
+                {/* Unpublished TV Series */}
+                <div className="space-y-4">
+                    <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                        <div className="w-1 h-5 bg-yellow-500 rounded-full"></div>
+                        Unpublished TV Series ({tvSeries.filter((s) => s.status === 'unpublished').length})
+                    </h2>
+                    {contentLoading ? (
+                        <div className="text-center py-12 text-gray-500">Loading...</div>
+                    ) : tvSeries.filter((s) => s.status === 'unpublished').length === 0 ? (
+                        <div className="bg-[#111] border border-white/10 rounded-xl p-12 text-center text-gray-500">
+                            No unpublished TV series.
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                            {tvSeries.filter((s) => s.status === 'unpublished').map((series) => (
+                                <div key={series.id} className="bg-[#111] border border-white/10 rounded-xl overflow-hidden group hover:border-yellow-500/50 transition-colors">
+                                    <div className="relative aspect-[2/3] bg-gray-900">
+                                        <img src={series.poster_url} alt={series.title} className="w-full h-full object-cover" />
+                                        <div className="absolute top-2 right-2 bg-yellow-500/90 backdrop-blur-sm px-2 py-1 rounded text-xs font-bold text-black">
+                                            DRAFT
+                                        </div>
+                                        {episodeCounts[series.id] > 0 && (
+                                            <div className="absolute top-2 left-2 bg-black/60 backdrop-blur-sm px-2 py-1 rounded text-xs font-bold text-white">
+                                                📺 {episodeCounts[series.id]} Episodes
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="p-4 space-y-3">
+                                        <div>
+                                            <h3 className="font-bold text-white truncate">{series.title}</h3>
+                                            <p className="text-xs text-gray-500">{series.genre}</p>
+                                            {series.year && <p className="text-xs text-gray-600">{series.year}</p>}
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={() => handleManageEpisodes(series)}
+                                                className="flex-1 bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 px-3 py-2 rounded text-xs font-bold transition-colors flex items-center justify-center gap-1"
+                                            >
+                                                <List size={14} />
+                                                Episodes
+                                            </button>
+                                            <button
+                                                onClick={() => handlePublish(series.id)}
+                                                className="bg-neon-green hover:bg-neon-green/80 text-black px-3 py-2 rounded text-xs font-bold transition-colors"
+                                            >
+                                                <CheckCircle size={14} />
+                                            </button>
+                                            <button
+                                                onClick={() => handleDelete(series.id, series.title)}
+                                                className="bg-red-500/20 hover:bg-red-500/30 text-red-400 px-3 py-2 rounded text-xs font-bold transition-colors"
+                                            >
+                                                <Trash2 size={14} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
+                {/* Published TV Series */}
+                <div className="space-y-4">
+                    <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                        <div className="w-1 h-5 bg-neon-green rounded-full"></div>
+                        Published TV Series ({tvSeries.filter((s) => s.status === 'published').length})
+                    </h2>
+                    {contentLoading ? (
+                        <div className="text-center py-12 text-gray-500">Loading...</div>
+                    ) : tvSeries.filter((s) => s.status === 'published').length === 0 ? (
+                        <div className="bg-[#111] border border-white/10 rounded-xl p-12 text-center text-gray-500">
+                            No published TV series yet.
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                            {tvSeries.filter((s) => s.status === 'published').map((series) => (
+                                <div key={series.id} className="bg-[#111] border border-white/10 rounded-xl overflow-hidden group hover:border-neon-green/50 transition-colors">
+                                    <div className="relative aspect-[2/3] bg-gray-900">
+                                        <img src={series.poster_url} alt={series.title} className="w-full h-full object-cover" />
+                                        <div className="absolute top-2 right-2 bg-neon-green/90 backdrop-blur-sm px-2 py-1 rounded text-xs font-bold text-black">
+                                            LIVE
+                                        </div>
+                                        {episodeCounts[series.id] > 0 && (
+                                            <div className="absolute top-2 left-2 bg-black/60 backdrop-blur-sm px-2 py-1 rounded text-xs font-bold text-white">
+                                                📺 {episodeCounts[series.id]} Episodes
+                                            </div>
+                                        )}
+                                        {series.rating && (
+                                            <div className="absolute bottom-2 left-2 bg-black/60 backdrop-blur-sm px-2 py-1 rounded text-xs font-bold text-white">
+                                                ⭐ {series.rating}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="p-4 space-y-3">
+                                        <div>
+                                            <h3 className="font-bold text-white truncate">{series.title}</h3>
+                                            <p className="text-xs text-gray-500">{series.genre}</p>
+                                            {series.published_at && (
+                                                <p className="text-xs text-gray-600">Published {new Date(series.published_at).toLocaleDateString()}</p>
+                                            )}
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={() => handleManageEpisodes(series)}
+                                                className="flex-1 bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 px-3 py-2 rounded text-xs font-bold transition-colors flex items-center justify-center gap-1"
+                                            >
+                                                <List size={14} />
+                                                Episodes
+                                            </button>
+                                            <button
+                                                onClick={() => handleUnpublish(series.id)}
+                                                className="bg-white/10 hover:bg-white/20 text-white px-3 py-2 rounded text-xs font-bold transition-colors"
+                                            >
+                                                <XCircle size={14} />
+                                            </button>
+                                            <button
+                                                onClick={() => handleDelete(series.id, series.title)}
+                                                className="bg-red-500/20 hover:bg-red-500/30 text-red-400 px-3 py-2 rounded text-xs font-bold transition-colors"
+                                            >
+                                                <Trash2 size={14} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            </div>
+        )}
+
+        {/* Upload Modal */}
+        <UploadContentModal
+            isOpen={isUploadModalOpen}
+            onClose={() => setUploadModalOpen(false)}
+            onSuccess={handleUploadSuccess}
+            defaultType={uploadType}
+        />
+
+        {/* Episode Management Modal */}
+        {selectedSeries && (
+            <EpisodeManagement
+                isOpen={selectedSeries !== null}
+                onClose={() => setSelectedSeries(null)}
+                series={selectedSeries}
+                onUpdate={() => {
+                    loadTVSeries();
+                }}
+            />
         )}
 
       </main>

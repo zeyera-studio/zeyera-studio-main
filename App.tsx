@@ -6,6 +6,8 @@ import ContactSection from './components/ContactSection';
 import Footer from './components/Footer';
 import MoviesPage from './components/MoviesPage';
 import TVSeriesPage from './components/TVSeriesPage';
+import MovieDetailPage from './components/MovieDetailPage';
+import TVSeriesDetailPage from './components/TVSeriesDetailPage';
 import AdminDashboard from './components/AdminDashboard';
 import { AuthProvider } from './contexts/AuthContext';
 import { ContentItem } from './types';
@@ -24,12 +26,13 @@ const MOCK_DATA: ContentItem[] = [
   { id: '10', title: 'Lost Signal', description: 'Thriller', category: 'TV Series', imageUrl: 'https://picsum.photos/seed/lost/300/450', year: '2024' }
 ];
 
-type PageType = 'home' | 'movies' | 'tv' | 'admin';
+type PageType = 'home' | 'movies' | 'tv' | 'admin' | 'movieDetail' | 'tvDetail';
 
 const AppContent: React.FC = () => {
   const [content, setContent] = useState<ContentItem[]>(MOCK_DATA);
   const [isSearching, setIsSearching] = useState(false);
   const [currentPage, setCurrentPage] = useState<PageType>('home');
+  const [selectedContentId, setSelectedContentId] = useState<string | null>(null);
 
   const handleSearch = async (query: string) => {
     setIsSearching(true);
@@ -50,12 +53,21 @@ const AppContent: React.FC = () => {
     }
   };
 
+  const handleNavigate = (page: PageType, contentId?: string) => {
+    setCurrentPage(page);
+    if (contentId) {
+      setSelectedContentId(contentId);
+    }
+    // Scroll to top on navigation
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   return (
     <div className="min-h-screen bg-[#050505] text-white font-sans selection:bg-neon-green selection:text-black">
       <Navbar 
         onSearch={handleSearch} 
         isSearching={isSearching} 
-        onNavigate={setCurrentPage} 
+        onNavigate={(page) => handleNavigate(page)} 
         currentPage={currentPage}
       />
       
@@ -75,11 +87,25 @@ const AppContent: React.FC = () => {
         )}
 
         {currentPage === 'movies' && (
-          <MoviesPage />
+          <MoviesPage onSelectMovie={(id) => handleNavigate('movieDetail', id)} />
         )}
         
         {currentPage === 'tv' && (
-           <TVSeriesPage />
+           <TVSeriesPage onSelectSeries={(id) => handleNavigate('tvDetail', id)} />
+        )}
+
+        {currentPage === 'movieDetail' && selectedContentId && (
+          <MovieDetailPage 
+            movieId={selectedContentId} 
+            onBack={() => handleNavigate('movies')} 
+          />
+        )}
+
+        {currentPage === 'tvDetail' && selectedContentId && (
+          <TVSeriesDetailPage 
+            seriesId={selectedContentId} 
+            onBack={() => handleNavigate('tv')} 
+          />
         )}
 
         {currentPage === 'admin' && (
@@ -87,7 +113,7 @@ const AppContent: React.FC = () => {
         )}
       </main>
 
-      {currentPage !== 'admin' && <Footer />}
+      {currentPage !== 'admin' && currentPage !== 'movieDetail' && currentPage !== 'tvDetail' && <Footer />}
     </div>
   );
 };

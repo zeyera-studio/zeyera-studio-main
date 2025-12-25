@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Search, Filter, Star, Play, Info, ChevronDown } from 'lucide-react';
+import { Content } from '../types';
+import { fetchContent } from '../lib/contentService';
 
-// Extended mock data for the movies page to populate categories
-const MOVIE_DATABASE = [
+// Extended mock data for the movies page to populate categories (fallback)
+const MOCK_MOVIE_DATABASE = [
   { id: 'm1', title: 'Cyber Strike', genre: 'Action', rating: '4.8', year: '2024', image: 'https://images.unsplash.com/photo-1535016120720-40c6874c3b13?q=80&w=800&auto=format&fit=crop' },
   { id: 'm2', title: 'The Last Duel', genre: 'Action', rating: '4.5', year: '2023', image: 'https://images.unsplash.com/photo-1596727147705-5d353c6805a5?q=80&w=800&auto=format&fit=crop' },
   { id: 'm3', title: 'Speed Demon', genre: 'Action', rating: '4.2', year: '2024', image: 'https://images.unsplash.com/photo-1568605114967-8130f3a36994?q=80&w=800&auto=format&fit=crop' },
@@ -23,7 +25,7 @@ const MOVIE_DATABASE = [
   { id: 's3', title: 'Neural Net', genre: 'Sci-Fi', rating: '4.6', year: '2024', image: 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?q=80&w=800&auto=format&fit=crop' },
 ];
 
-const CategorySection: React.FC<{ title: string; movies: typeof MOVIE_DATABASE }> = ({ title, movies }) => {
+const CategorySection: React.FC<{ title: string; movies: typeof MOVIE_DATABASE; onSelectMovie: (id: string) => void }> = ({ title, movies, onSelectMovie }) => {
   return (
     <div className="mb-12">
       <div className="flex items-center justify-between mb-6 px-4 md:px-8">
@@ -38,7 +40,7 @@ const CategorySection: React.FC<{ title: string; movies: typeof MOVIE_DATABASE }
       
       <div className="flex overflow-x-auto pb-8 px-4 md:px-8 gap-6 snap-x snap-mandatory hide-scrollbar" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
         {movies.map((movie) => (
-          <div key={movie.id} className="min-w-[220px] w-[220px] snap-center group cursor-pointer">
+          <div key={movie.id} className="min-w-[220px] w-[220px] snap-center group cursor-pointer" onClick={() => onSelectMovie(movie.id)}>
             <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-gray-900 mb-3 border border-white/5 group-hover:border-neon-green/50 transition-all duration-300 shadow-lg group-hover:shadow-[0_0_20px_rgba(57,255,20,0.15)]">
               <img src={movie.image} alt={movie.title} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
               <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent opacity-80"></div>
@@ -69,8 +71,44 @@ const CategorySection: React.FC<{ title: string; movies: typeof MOVIE_DATABASE }
   );
 };
 
-const MoviesPage: React.FC = () => {
+interface MoviesPageProps {
+  onSelectMovie: (movieId: string) => void;
+}
+
+const MoviesPage: React.FC<MoviesPageProps> = ({ onSelectMovie }) => {
   const [searchQuery, setSearchQuery] = useState('');
+  const [dbMovies, setDbMovies] = useState<Content[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Fetch movies from database on mount
+  useEffect(() => {
+    const loadMovies = async () => {
+      try {
+        const movies = await fetchContent('published', 'Movie');
+        setDbMovies(movies);
+      } catch (error) {
+        console.error('Error loading movies:', error);
+        // Fallback to mock data on error
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadMovies();
+  }, []);
+
+  // Convert database content to display format and merge with mock data
+  const convertToDisplayFormat = (content: Content) => ({
+    id: content.id,
+    title: content.title,
+    genre: content.genre,
+    rating: content.rating || '4.5',
+    year: content.year || '2024',
+    image: content.poster_url,
+  });
+
+  // Merge database content with mock data (database first)
+  const dbMoviesFormatted = dbMovies.map(convertToDisplayFormat);
+  const MOVIE_DATABASE = [...dbMoviesFormatted, ...MOCK_MOVIE_DATABASE];
 
   // Filter data based on search
   const filteredMovies = MOVIE_DATABASE.filter(m => m.title.toLowerCase().includes(searchQuery.toLowerCase()));
@@ -140,10 +178,10 @@ const MoviesPage: React.FC = () => {
             </div>
         ) : (
             <>
-                {(!searchQuery || actionMovies.length > 0) && <CategorySection title="Action Packed" movies={actionMovies.length ? actionMovies : MOVIE_DATABASE.filter(m => m.genre === 'Action')} />}
-                {(!searchQuery || comedyMovies.length > 0) && <CategorySection title="Laugh Out Loud" movies={comedyMovies.length ? comedyMovies : MOVIE_DATABASE.filter(m => m.genre === 'Comedy')} />}
-                {(!searchQuery || romanceMovies.length > 0) && <CategorySection title="Romantic Getaways" movies={romanceMovies.length ? romanceMovies : MOVIE_DATABASE.filter(m => m.genre === 'Romance')} />}
-                {(!searchQuery || sciFiMovies.length > 0) && <CategorySection title="Sci-Fi Dimensions" movies={sciFiMovies.length ? sciFiMovies : MOVIE_DATABASE.filter(m => m.genre === 'Sci-Fi')} />}
+                {(!searchQuery || actionMovies.length > 0) && <CategorySection title="Action Packed" movies={actionMovies.length ? actionMovies : MOVIE_DATABASE.filter(m => m.genre === 'Action')} onSelectMovie={onSelectMovie} />}
+                {(!searchQuery || comedyMovies.length > 0) && <CategorySection title="Laugh Out Loud" movies={comedyMovies.length ? comedyMovies : MOVIE_DATABASE.filter(m => m.genre === 'Comedy')} onSelectMovie={onSelectMovie} />}
+                {(!searchQuery || romanceMovies.length > 0) && <CategorySection title="Romantic Getaways" movies={romanceMovies.length ? romanceMovies : MOVIE_DATABASE.filter(m => m.genre === 'Romance')} onSelectMovie={onSelectMovie} />}
+                {(!searchQuery || sciFiMovies.length > 0) && <CategorySection title="Sci-Fi Dimensions" movies={sciFiMovies.length ? sciFiMovies : MOVIE_DATABASE.filter(m => m.genre === 'Sci-Fi')} onSelectMovie={onSelectMovie} />}
             </>
         )}
       </div>
