@@ -39,6 +39,7 @@ const UploadContentModal: React.FC<UploadContentModalProps> = ({ isOpen, onClose
   const [language, setLanguage] = useState('English');
   const [quality, setQuality] = useState('HD');
   const [trailerUrl, setTrailerUrl] = useState('');
+  const [price, setPrice] = useState('');
 
   // File state
   const [posterFile, setPosterFile] = useState<File | null>(null);
@@ -205,6 +206,7 @@ const UploadContentModal: React.FC<UploadContentModalProps> = ({ isOpen, onClose
         director: director.trim() || undefined,
         language,
         quality,
+        price: price ? parseFloat(price) : 0,
       });
 
       // Success!
@@ -262,6 +264,7 @@ const UploadContentModal: React.FC<UploadContentModalProps> = ({ isOpen, onClose
         director: director.trim() || undefined,
         language,
         quality,
+        price: price ? parseFloat(price) : 0, // Default price per season
       });
 
       // Upload episodes
@@ -319,6 +322,7 @@ const UploadContentModal: React.FC<UploadContentModalProps> = ({ isOpen, onClose
     setLanguage('English');
     setQuality('HD');
     setTrailerUrl('');
+    setPrice('');
     setPosterFile(null);
     setPosterPreview('');
     setVideoFile(null);
@@ -471,6 +475,27 @@ const UploadContentModal: React.FC<UploadContentModalProps> = ({ isOpen, onClose
                   className="w-full bg-[#050505] border border-white/10 rounded-lg px-4 py-2 text-white focus:border-neon-green/50 focus:outline-none disabled:opacity-50"
                   placeholder="4.8"
                 />
+              </div>
+
+              {/* Price */}
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-2">
+                  Price (LKR) 
+                  <span className="text-gray-500 text-xs ml-1">(0 = Free)</span>
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={price}
+                  onChange={(e) => setPrice(e.target.value)}
+                  disabled={isUploading}
+                  className="w-full bg-[#050505] border border-white/10 rounded-lg px-4 py-2 text-white focus:border-neon-green/50 focus:outline-none disabled:opacity-50"
+                  placeholder="500"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  {activeTab === 'TV Series' ? 'Default price per season' : 'One-time purchase price'}
+                </p>
               </div>
 
               {/* Duration - Only for Movie */}

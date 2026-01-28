@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Navbar from './components/Navbar';
 import Hero from './components/Hero';
 import SplitShowcase from './components/SplitShowcase';
@@ -9,6 +9,8 @@ import TVSeriesPage from './components/TVSeriesPage';
 import MovieDetailPage from './components/MovieDetailPage';
 import TVSeriesDetailPage from './components/TVSeriesDetailPage';
 import AdminDashboard from './components/AdminDashboard';
+import MyPurchasesPage from './components/MyPurchasesPage';
+import PaymentResultPage from './components/PaymentResultPage';
 import { AuthProvider } from './contexts/AuthContext';
 import { ContentItem } from './types';
 import { getAIRecommendations } from './services/geminiService';
@@ -26,13 +28,37 @@ const MOCK_DATA: ContentItem[] = [
   { id: '10', title: 'Lost Signal', description: 'Thriller', category: 'TV Series', imageUrl: 'https://picsum.photos/seed/lost/300/450', year: '2024' }
 ];
 
-type PageType = 'home' | 'movies' | 'tv' | 'admin' | 'movieDetail' | 'tvDetail';
+type PageType = 'home' | 'movies' | 'tv' | 'admin' | 'movieDetail' | 'tvDetail' | 'myPurchases' | 'paymentResult';
 
 const AppContent: React.FC = () => {
   const [content, setContent] = useState<ContentItem[]>(MOCK_DATA);
   const [isSearching, setIsSearching] = useState(false);
   const [currentPage, setCurrentPage] = useState<PageType>('home');
   const [selectedContentId, setSelectedContentId] = useState<string | null>(null);
+  const [paymentStatus, setPaymentStatus] = useState<'success' | 'cancelled' | 'error'>('success');
+  const [paymentOrderId, setPaymentOrderId] = useState<string>('');
+
+  // Check for payment return from PayHere
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const payment = urlParams.get('payment');
+    const orderId = urlParams.get('order_id');
+
+    if (payment && orderId) {
+      setPaymentOrderId(orderId);
+      if (payment === 'success') {
+        setPaymentStatus('success');
+      } else if (payment === 'cancelled') {
+        setPaymentStatus('cancelled');
+      } else {
+        setPaymentStatus('error');
+      }
+      setCurrentPage('paymentResult');
+      
+      // Clean up URL
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
 
   const handleSearch = async (query: string) => {
     setIsSearching(true);
@@ -111,9 +137,21 @@ const AppContent: React.FC = () => {
         {currentPage === 'admin' && (
            <AdminDashboard />
         )}
+
+        {currentPage === 'myPurchases' && (
+          <MyPurchasesPage onNavigate={(page, contentId) => handleNavigate(page as PageType, contentId)} />
+        )}
+
+        {currentPage === 'paymentResult' && paymentOrderId && (
+          <PaymentResultPage 
+            status={paymentStatus}
+            orderId={paymentOrderId}
+            onNavigate={(page, contentId) => handleNavigate(page as PageType, contentId)}
+          />
+        )}
       </main>
 
-      {currentPage !== 'admin' && currentPage !== 'movieDetail' && currentPage !== 'tvDetail' && <Footer />}
+      {currentPage !== 'admin' && currentPage !== 'movieDetail' && currentPage !== 'tvDetail' && currentPage !== 'paymentResult' && <Footer />}
     </div>
   );
 };

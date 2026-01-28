@@ -1,14 +1,14 @@
 
 import React, { useState } from 'react';
-import { Search, User, Menu, X, LogOut, LayoutDashboard, Settings } from 'lucide-react';
+import { Search, User, Menu, X, LogOut, LayoutDashboard, Settings, ShoppingBag } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import AuthModal from './AuthModal';
 
 interface NavbarProps {
   onSearch: (query: string) => void;
   isSearching: boolean;
-  onNavigate: (page: 'home' | 'movies' | 'tv' | 'admin') => void;
-  currentPage: 'home' | 'movies' | 'tv' | 'admin';
+  onNavigate: (page: 'home' | 'movies' | 'tv' | 'admin' | 'myPurchases') => void;
+  currentPage: string;
 }
 
 const Navbar: React.FC<NavbarProps> = ({ onSearch, isSearching, onNavigate, currentPage }) => {
@@ -28,7 +28,7 @@ const Navbar: React.FC<NavbarProps> = ({ onSearch, isSearching, onNavigate, curr
     }
   };
 
-  const handleNav = (page: 'home' | 'movies' | 'tv' | 'admin') => {
+  const handleNav = (page: 'home' | 'movies' | 'tv' | 'admin' | 'myPurchases') => {
     onNavigate(page);
     setIsOpen(false);
     setShowUserMenu(false);
@@ -117,6 +117,13 @@ const Navbar: React.FC<NavbarProps> = ({ onSearch, isSearching, onNavigate, curr
                                 <p className="text-xs text-gray-500 truncate">{user.email}</p>
                             </div>
                             
+                            <button 
+                                onClick={() => handleNav('myPurchases')}
+                                className="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-white/5 flex items-center gap-2"
+                            >
+                                <ShoppingBag size={14} /> My Purchases
+                            </button>
+
                             {isAdmin && (
                                 <button 
                                     onClick={() => handleNav('admin')}
@@ -177,6 +184,10 @@ const Navbar: React.FC<NavbarProps> = ({ onSearch, isSearching, onNavigate, curr
             <button onClick={() => handleNav('movies')} className="text-gray-300 block px-3 py-2 rounded-md text-base font-medium w-full text-left hover:bg-white/10">Movies</button>
             <button onClick={() => handleNav('tv')} className="text-gray-300 block px-3 py-2 rounded-md text-base font-medium w-full text-left hover:bg-white/10">TV Series</button>
             
+            {user && (
+                <button onClick={() => handleNav('myPurchases')} className="text-gray-300 block px-3 py-2 rounded-md text-base font-medium w-full text-left hover:bg-white/10">My Purchases</button>
+            )}
+
             {isAdmin && (
                 <button onClick={() => handleNav('admin')} className="text-neon-green block px-3 py-2 rounded-md text-base font-medium w-full text-left hover:bg-white/10">Admin Dashboard</button>
             )}

@@ -44,6 +44,7 @@ export interface Content {
   director?: string;
   language?: string;
   quality?: string;
+  price?: number; // Price in LKR for movies
   status: ContentStatus;
   uploaded_by?: string;
   published_by?: string;
@@ -107,4 +108,51 @@ export interface Comment {
   // Joined data from profiles table
   username?: string;
   user_email?: string;
+}
+
+// Payment & Purchase Types
+export type PurchaseStatus = 'pending' | 'completed' | 'failed' | 'refunded';
+
+export interface Purchase {
+  id: string;
+  user_id: string;
+  content_id: string;
+  season_number?: number; // NULL for movies, specific season for TV series
+  order_id: string; // PayHere order_id
+  amount: number;
+  currency: string;
+  status: PurchaseStatus;
+  payment_method?: string;
+  purchased_at: string;
+  completed_at?: string;
+  // Joined data
+  content?: Content;
+}
+
+export interface SeasonPrice {
+  id: string;
+  content_id: string;
+  season_number: number;
+  price: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PayHerePaymentData {
+  merchant_id: string;
+  return_url: string;
+  cancel_url: string;
+  notify_url: string;
+  order_id: string;
+  items: string;
+  currency: string;
+  amount: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone: string;
+  address: string;
+  city: string;
+  country: string;
+  hash: string;
 }
