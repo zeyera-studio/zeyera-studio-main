@@ -1,10 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Clock, Star, Calendar, Globe, Film, Users, ArrowLeft, ChevronDown, ChevronUp } from 'lucide-react';
-import { Content, Episode, SeasonGroup } from '../types';
+import { Play, Clock, Star, Calendar, Globe, Film, Users, ArrowLeft, ChevronDown, ChevronUp, Lock, ShoppingCart } from 'lucide-react';
+import { Content, Episode, SeasonGroup, SeasonPrice } from '../types';
 import { supabase } from '../lib/supabaseClient';
 import { fetchEpisodesBySeries } from '../lib/episodeService';
+import { useAuth } from '../contexts/AuthContext';
+import { getUserPurchasedSeasons, getSeasonPrice } from '../lib/purchaseService';
+import { getSeasonPrices } from '../lib/pricingService';
 import VideoPlayerModal from './VideoPlayerModal';
 import CommentsSection from './CommentsSection';
+import PurchaseModal from './PurchaseModal';
 
 interface TVSeriesDetailPageProps {
   seriesId: string;
@@ -12,6 +16,7 @@ interface TVSeriesDetailPageProps {
 }
 
 const TVSeriesDetailPage: React.FC<TVSeriesDetailPageProps> = ({ seriesId, onBack }) => {
+  const { user, isAdmin } = useAuth();
   const [series, setSeries] = useState<Content | null>(null);
   const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [seasonGroups, setSeasonGroups] = useState<SeasonGroup[]>([]);
@@ -20,10 +25,19 @@ const TVSeriesDetailPage: React.FC<TVSeriesDetailPageProps> = ({ seriesId, onBac
   const [error, setError] = useState('');
   const [isPlayerOpen, setPlayerOpen] = useState(false);
   const [selectedEpisode, setSelectedEpisode] = useState<Episode | null>(null);
+  const [purchasedSeasons, setPurchasedSeasons] = useState<number[]>([]);
+  const [seasonPrices, setSeasonPricesState] = useState<Record<number, number>>({});
+  const [isPurchaseModalOpen, setPurchaseModalOpen] = useState(false);
+  const [selectedSeasonForPurchase, setSelectedSeasonForPurchase] = useState<number | null>(null);
+  const [selectedSeasonPrice, setSelectedSeasonPrice] = useState(0);
 
   useEffect(() => {
     loadSeriesData();
   }, [seriesId]);
+
+  useEffect(() => {
+    loadPurchasedSeasons();
+  }, [series, user, isAdmin]);
 
   const loadSeriesData = async () => {
     setLoading(true);
@@ -53,12 +67,52 @@ const TVSeriesDetailPage: React.FC<TVSeriesDetailPageProps> = ({ seriesId, onBac
       // Group episodes by season
       const grouped = groupEpisodesBySeason(episodesData);
       setSeasonGroups(grouped);
+
+      // Load season prices
+      const prices = await getSeasonPrices(seriesId);
+      const priceMap: Record<number, number> = {};
+      prices.forEach((sp: SeasonPrice) => {
+        priceMap[sp.season_number] = sp.price;
+      });
+      // Use default price from content if no specific season price
+      grouped.forEach(sg => {
+        if (!priceMap[sg.seasonNumber]) {
+          priceMap[sg.seasonNumber] = seriesData.price || 0;
+        }
+      });
+      setSeasonPricesState(priceMap);
     } catch (err: any) {
       console.error('Error loading TV series:', err);
       setError(err.message || 'Failed to load TV series');
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadPurchasedSeasons = async () => {
+    if (!series) return;
+
+    // Admins have access to all seasons
+    if (isAdmin) {
+      const allSeasons = seasonGroups.map(sg => sg.seasonNumber);
+      setPurchasedSeasons(allSeasons);
+      return;
+    }
+
+    // Check purchased seasons for user
+    if (user) {
+      const purchased = await getUserPurchasedSeasons(series.id, user.id);
+      setPurchasedSeasons(purchased);
+    } else {
+      setPurchasedSeasons([]);
+    }
+  };
+
+  const hasSeasonAccess = (seasonNumber: number): boolean => {
+    if (isAdmin) return true;
+    const price = seasonPrices[seasonNumber] || 0;
+    if (price === 0) return true; // Free season
+    return purchasedSeasons.includes(seasonNumber);
   };
 
   const groupEpisodesBySeason = (episodes: Episode[]): SeasonGroup[] => {
@@ -96,8 +150,21 @@ const TVSeriesDetailPage: React.FC<TVSeriesDetailPageProps> = ({ seriesId, onBac
   };
 
   const handlePlayEpisode = (episode: Episode) => {
-    setSelectedEpisode(episode);
-    setPlayerOpen(true);
+    if (hasSeasonAccess(episode.season_number)) {
+      setSelectedEpisode(episode);
+      setPlayerOpen(true);
+    } else {
+      // Show purchase modal for this season
+      setSelectedSeasonForPurchase(episode.season_number);
+      setSelectedSeasonPrice(seasonPrices[episode.season_number] || 0);
+      setPurchaseModalOpen(true);
+    }
+  };
+
+  const handleBuySeason = (seasonNumber: number) => {
+    setSelectedSeasonForPurchase(seasonNumber);
+    setSelectedSeasonPrice(seasonPrices[seasonNumber] || 0);
+    setPurchaseModalOpen(true);
   };
 
   const extractYouTubeId = (url: string) => {
@@ -262,22 +329,46 @@ const TVSeriesDetailPage: React.FC<TVSeriesDetailPageProps> = ({ seriesId, onBac
               {seasonGroups.map((seasonGroup) => (
                 <div key={seasonGroup.seasonNumber} className="bg-white/5 rounded-lg overflow-hidden">
                   {/* Season Header */}
-                  <button
-                    onClick={() => toggleSeason(seasonGroup.seasonNumber)}
-                    className="w-full flex items-center justify-between p-6 hover:bg-white/10 transition-colors"
-                  >
-                    <h3 className="text-xl font-bold text-white">
-                      Season {seasonGroup.seasonNumber}
-                      <span className="text-gray-400 text-sm ml-3">
-                        ({seasonGroup.episodes.length} episode{seasonGroup.episodes.length !== 1 ? 's' : ''})
-                      </span>
-                    </h3>
-                    {expandedSeasons.has(seasonGroup.seasonNumber) ? (
-                      <ChevronUp className="text-neon-green" size={24} />
-                    ) : (
-                      <ChevronDown className="text-gray-400" size={24} />
-                    )}
-                  </button>
+                  <div className="flex items-center justify-between p-6 hover:bg-white/10 transition-colors">
+                    <button
+                      onClick={() => toggleSeason(seasonGroup.seasonNumber)}
+                      className="flex items-center gap-4 flex-1"
+                    >
+                      <h3 className="text-xl font-bold text-white">
+                        Season {seasonGroup.seasonNumber}
+                        <span className="text-gray-400 text-sm ml-3">
+                          ({seasonGroup.episodes.length} episode{seasonGroup.episodes.length !== 1 ? 's' : ''})
+                        </span>
+                      </h3>
+                      {!hasSeasonAccess(seasonGroup.seasonNumber) && (
+                        <span className="flex items-center gap-1 text-yellow-500 text-sm">
+                          <Lock size={14} />
+                          Locked
+                        </span>
+                      )}
+                    </button>
+                    <div className="flex items-center gap-4">
+                      {!hasSeasonAccess(seasonGroup.seasonNumber) && seasonPrices[seasonGroup.seasonNumber] > 0 && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleBuySeason(seasonGroup.seasonNumber);
+                          }}
+                          className="px-4 py-2 bg-gradient-to-r from-yellow-500 to-orange-500 text-black rounded-lg font-semibold hover:from-yellow-400 hover:to-orange-400 transition-all flex items-center gap-2"
+                        >
+                          <ShoppingCart size={16} />
+                          Buy Rs. {seasonPrices[seasonGroup.seasonNumber]?.toLocaleString()}
+                        </button>
+                      )}
+                      <button onClick={() => toggleSeason(seasonGroup.seasonNumber)}>
+                        {expandedSeasons.has(seasonGroup.seasonNumber) ? (
+                          <ChevronUp className="text-neon-green" size={24} />
+                        ) : (
+                          <ChevronDown className="text-gray-400" size={24} />
+                        )}
+                      </button>
+                    </div>
+                  </div>
 
                   {/* Episodes List */}
                   {expandedSeasons.has(seasonGroup.seasonNumber) && (
@@ -322,14 +413,24 @@ const TVSeriesDetailPage: React.FC<TVSeriesDetailPageProps> = ({ seriesId, onBac
                             </p>
                           </div>
 
-                          {/* Watch Button */}
-                          <button
-                            onClick={() => handlePlayEpisode(episode)}
-                            className="px-4 py-2 bg-neon-green text-black rounded-lg font-semibold hover:bg-neon-green/80 transition-colors flex items-center gap-2 flex-shrink-0"
-                          >
-                            <Play size={16} fill="currentColor" />
-                            Watch
-                          </button>
+                          {/* Watch/Locked Button */}
+                          {hasSeasonAccess(episode.season_number) ? (
+                            <button
+                              onClick={() => handlePlayEpisode(episode)}
+                              className="px-4 py-2 bg-neon-green text-black rounded-lg font-semibold hover:bg-neon-green/80 transition-colors flex items-center gap-2 flex-shrink-0"
+                            >
+                              <Play size={16} fill="currentColor" />
+                              Watch
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handlePlayEpisode(episode)}
+                              className="px-4 py-2 bg-gray-700 text-gray-300 rounded-lg font-semibold hover:bg-gray-600 transition-colors flex items-center gap-2 flex-shrink-0"
+                            >
+                              <Lock size={16} />
+                              Locked
+                            </button>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -370,7 +471,7 @@ const TVSeriesDetailPage: React.FC<TVSeriesDetailPageProps> = ({ seriesId, onBac
       </div>
 
       {/* Video Player Modal */}
-      {selectedEpisode && (
+      {selectedEpisode && hasSeasonAccess(selectedEpisode.season_number) && (
         <VideoPlayerModal
           isOpen={isPlayerOpen}
           videoUrl={selectedEpisode.video_url}
@@ -378,6 +479,20 @@ const TVSeriesDetailPage: React.FC<TVSeriesDetailPageProps> = ({ seriesId, onBac
           onClose={() => {
             setPlayerOpen(false);
             setSelectedEpisode(null);
+          }}
+        />
+      )}
+
+      {/* Purchase Modal */}
+      {series && selectedSeasonForPurchase !== null && (
+        <PurchaseModal
+          isOpen={isPurchaseModalOpen}
+          content={series}
+          seasonNumber={selectedSeasonForPurchase}
+          price={selectedSeasonPrice}
+          onClose={() => {
+            setPurchaseModalOpen(false);
+            setSelectedSeasonForPurchase(null);
           }}
         />
       )}

@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Clock, Star, Calendar, Globe, Film, Users, ArrowLeft } from 'lucide-react';
+import { Play, Clock, Star, Calendar, Globe, Film, Users, ArrowLeft, Lock, ShoppingCart } from 'lucide-react';
 import { Content } from '../types';
 import { supabase } from '../lib/supabaseClient';
+import { useAuth } from '../contexts/AuthContext';
+import { checkContentAccess, getContentPrice } from '../lib/purchaseService';
 import VideoPlayerModal from './VideoPlayerModal';
 import CommentsSection from './CommentsSection';
+import PurchaseModal from './PurchaseModal';
 
 interface MovieDetailPageProps {
   movieId: string;
@@ -11,14 +14,23 @@ interface MovieDetailPageProps {
 }
 
 const MovieDetailPage: React.FC<MovieDetailPageProps> = ({ movieId, onBack }) => {
+  const { user, isAdmin } = useAuth();
   const [movie, setMovie] = useState<Content | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [isPlayerOpen, setPlayerOpen] = useState(false);
+  const [hasAccess, setHasAccess] = useState(false);
+  const [isPurchaseModalOpen, setPurchaseModalOpen] = useState(false);
+  const [price, setPrice] = useState(0);
+  const [checkingAccess, setCheckingAccess] = useState(true);
 
   useEffect(() => {
     loadMovie();
   }, [movieId]);
+
+  useEffect(() => {
+    checkAccess();
+  }, [movie, user, isAdmin]);
 
   const loadMovie = async () => {
     setLoading(true);
@@ -39,11 +51,50 @@ const MovieDetailPage: React.FC<MovieDetailPageProps> = ({ movieId, onBack }) =>
       }
 
       setMovie(data as Content);
+      setPrice(data.price || 0);
     } catch (err: any) {
       console.error('Error loading movie:', err);
       setError(err.message || 'Failed to load movie');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const checkAccess = async () => {
+    if (!movie) return;
+    
+    setCheckingAccess(true);
+    
+    // Admins always have access
+    if (isAdmin) {
+      setHasAccess(true);
+      setCheckingAccess(false);
+      return;
+    }
+
+    // If movie is free (price is 0), grant access
+    if (!movie.price || movie.price === 0) {
+      setHasAccess(true);
+      setCheckingAccess(false);
+      return;
+    }
+
+    // Check if user has purchased
+    if (user) {
+      const access = await checkContentAccess(movie.id, user.id);
+      setHasAccess(access);
+    } else {
+      setHasAccess(false);
+    }
+    
+    setCheckingAccess(false);
+  };
+
+  const handleWatchClick = () => {
+    if (hasAccess) {
+      setPlayerOpen(true);
+    } else {
+      setPurchaseModalOpen(true);
     }
   };
 
@@ -160,15 +211,38 @@ const MovieDetailPage: React.FC<MovieDetailPageProps> = ({ movieId, onBack }) =>
                 </span>
               </div>
 
-              {/* Watch Now Button */}
+              {/* Watch/Purchase Button */}
               {movie.video_url && (
-                <button
-                  onClick={() => setPlayerOpen(true)}
-                  className="bg-neon-green text-black px-8 py-4 rounded-lg font-bold text-lg hover:bg-neon-green/80 transition-all hover:scale-105 flex items-center gap-3 shadow-lg shadow-neon-green/30"
-                >
-                  <Play size={24} fill="currentColor" />
-                  Watch Now
-                </button>
+                <div className="flex items-center gap-4">
+                  {checkingAccess ? (
+                    <div className="bg-gray-700 text-white px-8 py-4 rounded-lg font-bold text-lg flex items-center gap-3">
+                      <div className="animate-spin rounded-full h-6 w-6 border-2 border-white border-t-transparent"></div>
+                      Checking...
+                    </div>
+                  ) : hasAccess ? (
+                    <button
+                      onClick={() => setPlayerOpen(true)}
+                      className="bg-neon-green text-black px-8 py-4 rounded-lg font-bold text-lg hover:bg-neon-green/80 transition-all hover:scale-105 flex items-center gap-3 shadow-lg shadow-neon-green/30"
+                    >
+                      <Play size={24} fill="currentColor" />
+                      Watch Now
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleWatchClick}
+                      className="bg-gradient-to-r from-yellow-500 to-orange-500 text-black px-8 py-4 rounded-lg font-bold text-lg hover:from-yellow-400 hover:to-orange-400 transition-all hover:scale-105 flex items-center gap-3 shadow-lg shadow-orange-500/30"
+                    >
+                      <ShoppingCart size={24} />
+                      Buy for Rs. {price.toLocaleString()}
+                    </button>
+                  )}
+                  {!hasAccess && price > 0 && (
+                    <div className="flex items-center gap-2 text-gray-400 text-sm">
+                      <Lock size={16} />
+                      Premium Content
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           </div>
@@ -238,12 +312,22 @@ const MovieDetailPage: React.FC<MovieDetailPageProps> = ({ movieId, onBack }) =>
       </div>
 
       {/* Video Player Modal */}
-      {movie.video_url && (
+      {movie.video_url && hasAccess && (
         <VideoPlayerModal
           isOpen={isPlayerOpen}
           videoUrl={movie.video_url}
           title={movie.title}
           onClose={() => setPlayerOpen(false)}
+        />
+      )}
+
+      {/* Purchase Modal */}
+      {movie && (
+        <PurchaseModal
+          isOpen={isPurchaseModalOpen}
+          content={movie}
+          price={price}
+          onClose={() => setPurchaseModalOpen(false)}
         />
       )}
     </div>
