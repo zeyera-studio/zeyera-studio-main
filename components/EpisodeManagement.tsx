@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { X, CheckCircle, XCircle, Trash2, Plus, Loader } from 'lucide-react';
-import { Content, Episode } from '../types';
+import { X, CheckCircle, XCircle, Trash2, Plus, Loader, DollarSign, Save } from 'lucide-react';
+import { Content, Episode, SeasonPrice } from '../types';
 import { fetchEpisodesBySeries, publishEpisode, unpublishEpisode, deleteEpisode, groupEpisodesBySeason } from '../lib/episodeService';
+import { getSeasonPrices, setSeasonPrice } from '../lib/pricingService';
 import EpisodeUploadModal from './EpisodeUploadModal';
 
 interface EpisodeManagementProps {
@@ -15,10 +16,14 @@ const EpisodeManagement: React.FC<EpisodeManagementProps> = ({ isOpen, onClose, 
   const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [loading, setLoading] = useState(false);
   const [isAddEpisodeOpen, setAddEpisodeOpen] = useState(false);
+  const [seasonPrices, setSeasonPricesState] = useState<Record<number, number>>({});
+  const [editingPrices, setEditingPrices] = useState<Record<number, string>>({});
+  const [savingPrice, setSavingPrice] = useState<number | null>(null);
 
   useEffect(() => {
     if (isOpen && series) {
       loadEpisodes();
+      loadSeasonPrices();
     }
   }, [isOpen, series]);
 
@@ -27,10 +32,66 @@ const EpisodeManagement: React.FC<EpisodeManagementProps> = ({ isOpen, onClose, 
     try {
       const allEpisodes = await fetchEpisodesBySeries(series.id);
       setEpisodes(allEpisodes);
+      
+      // Initialize editing prices for seasons that don't have prices yet
+      const seasons = new Set(allEpisodes.map(ep => ep.season_number));
+      setEditingPrices(prev => {
+        const updated = { ...prev };
+        seasons.forEach(s => {
+          if (updated[s] === undefined) {
+            updated[s] = (series.price || 0).toString(); // Default to content price
+          }
+        });
+        return updated;
+      });
     } catch (error) {
       console.error('Error loading episodes:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadSeasonPrices = async () => {
+    try {
+      const prices = await getSeasonPrices(series.id);
+      const priceMap: Record<number, number> = {};
+      const editMap: Record<number, string> = {};
+      prices.forEach((sp: SeasonPrice) => {
+        priceMap[sp.season_number] = sp.price;
+        editMap[sp.season_number] = sp.price.toString();
+      });
+      setSeasonPricesState(priceMap);
+      setEditingPrices(prev => ({ ...prev, ...editMap }));
+    } catch (error) {
+      console.error('Error loading season prices:', error);
+    }
+  };
+
+  const handlePriceChange = (seasonNumber: number, value: string) => {
+    setEditingPrices(prev => ({ ...prev, [seasonNumber]: value }));
+  };
+
+  const handleSavePrice = async (seasonNumber: number) => {
+    const priceValue = parseFloat(editingPrices[seasonNumber] || '0');
+    if (isNaN(priceValue) || priceValue < 0) {
+      alert('Please enter a valid price');
+      return;
+    }
+    
+    setSavingPrice(seasonNumber);
+    try {
+      const success = await setSeasonPrice(series.id, seasonNumber, priceValue);
+      if (success) {
+        setSeasonPricesState(prev => ({ ...prev, [seasonNumber]: priceValue }));
+        onUpdate();
+      } else {
+        alert('Failed to save price');
+      }
+    } catch (error) {
+      console.error('Error saving price:', error);
+      alert('Failed to save price');
+    } finally {
+      setSavingPrice(null);
     }
   };
 
@@ -133,10 +194,48 @@ const EpisodeManagement: React.FC<EpisodeManagementProps> = ({ isOpen, onClose, 
               <div className="space-y-8">
                 {seasonGroups.map((seasonGroup) => (
                   <div key={seasonGroup.seasonNumber} className="space-y-4">
-                    <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                      <div className="w-1 h-6 bg-neon-green rounded-full"></div>
-                      Season {seasonGroup.seasonNumber} ({seasonGroup.episodes.length} Episodes)
-                    </h3>
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                        <div className="w-1 h-6 bg-neon-green rounded-full"></div>
+                        Season {seasonGroup.seasonNumber} ({seasonGroup.episodes.length} Episodes)
+                      </h3>
+                      
+                      {/* Season Price Editor */}
+                      <div className="flex items-center gap-2">
+                        <DollarSign size={16} className="text-yellow-500" />
+                        <span className="text-gray-400 text-sm">Price:</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={editingPrices[seasonGroup.seasonNumber] || '0'}
+                          onChange={(e) => handlePriceChange(seasonGroup.seasonNumber, e.target.value)}
+                          className="w-24 bg-[#1a1a1a] border border-white/10 rounded px-2 py-1 text-white text-sm focus:border-neon-green/50 focus:outline-none"
+                          placeholder="0"
+                        />
+                        <span className="text-gray-500 text-sm">LKR</span>
+                        <button
+                          onClick={() => handleSavePrice(seasonGroup.seasonNumber)}
+                          disabled={savingPrice === seasonGroup.seasonNumber}
+                          className="bg-yellow-500 hover:bg-yellow-400 text-black px-2 py-1 rounded text-xs font-bold transition-colors flex items-center gap-1 disabled:opacity-50"
+                        >
+                          {savingPrice === seasonGroup.seasonNumber ? (
+                            <Loader className="animate-spin" size={12} />
+                          ) : (
+                            <Save size={12} />
+                          )}
+                          Save
+                        </button>
+                        {seasonPrices[seasonGroup.seasonNumber] > 0 && (
+                          <span className="text-xs text-neon-green ml-2">
+                            (Saved: Rs. {seasonPrices[seasonGroup.seasonNumber]?.toLocaleString()})
+                          </span>
+                        )}
+                        {(seasonPrices[seasonGroup.seasonNumber] === 0 || !seasonPrices[seasonGroup.seasonNumber]) && (
+                          <span className="text-xs text-gray-500 ml-2">(Free)</span>
+                        )}
+                      </div>
+                    </div>
 
                     <div className="space-y-3">
                       {seasonGroup.episodes.map((episode) => (
