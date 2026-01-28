@@ -3,7 +3,7 @@ import { X, ShoppingCart, Lock, CreditCard, Loader2 } from 'lucide-react';
 import { Content } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { buildPaymentData, generateOrderId, getCheckoutUrl, isPayHereConfigured } from '../lib/payhereClient';
-import { createPendingPurchase, getSeasonPrice, hasPendingPurchase } from '../lib/purchaseService';
+import { createPendingPurchase, getSeasonPrice, hasPendingPurchase, completePurchase } from '../lib/purchaseService';
 
 interface PurchaseModalProps {
   isOpen: boolean;
@@ -30,6 +30,35 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({
   const itemName = seasonNumber
     ? `${content.title} - Season ${seasonNumber}`
     : content.title;
+
+  // TEST MODE: Bypass PayHere and mark as purchased immediately
+  const handleTestPurchase = async () => {
+    if (!user || !profile) {
+      setError('Please log in to make a purchase');
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      // Generate order ID
+      const orderId = generateOrderId(content.id, user.id, seasonNumber);
+
+      // Create pending purchase
+      await createPendingPurchase(user.id, content.id, orderId, price, seasonNumber);
+
+      // Immediately mark as completed (bypass payment gateway)
+      await completePurchase(orderId);
+
+      // Redirect to success page
+      window.location.href = `${window.location.origin}?payment=success&order_id=${orderId}`;
+    } catch (err) {
+      console.error('Error in test purchase:', err);
+      setError('Failed to complete test purchase. Please try again.');
+      setIsLoading(false);
+    }
+  };
 
   const handlePurchase = async () => {
     if (!user || !profile) {
@@ -170,7 +199,7 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({
             </div>
           )}
 
-          {/* Purchase Button */}
+          {/* Purchase Button - PayHere */}
           <button
             onClick={handlePurchase}
             disabled={isLoading}
@@ -188,6 +217,27 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({
               </>
             )}
           </button>
+
+          {/* TEST MODE Button - For Development Testing */}
+          <button
+            onClick={handleTestPurchase}
+            disabled={isLoading}
+            className="w-full mt-3 bg-purple-600 text-white font-bold py-3 rounded-lg hover:bg-purple-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 border-2 border-dashed border-purple-400"
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="animate-spin" size={20} />
+                Processing...
+              </>
+            ) : (
+              <>
+                🧪 Test Purchase (Skip Payment)
+              </>
+            )}
+          </button>
+          <p className="text-purple-400 text-xs text-center mt-1">
+            ⚠️ Testing only - bypasses payment gateway
+          </p>
 
           {/* Terms */}
           <p className="text-gray-500 text-xs text-center mt-4">
