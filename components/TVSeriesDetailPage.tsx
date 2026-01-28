@@ -1,43 +1,46 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Clock, Star, Calendar, Globe, Film, Users, ArrowLeft, ChevronDown, ChevronUp, Lock, ShoppingCart } from 'lucide-react';
-import { Content, Episode, SeasonGroup, SeasonPrice } from '../types';
+import { Play, Clock, Star, Calendar, Globe, Film, Users, ArrowLeft, Lock, ShoppingCart } from 'lucide-react';
+import { Content, Episode, SeasonPrice } from '../types';
 import { supabase } from '../lib/supabaseClient';
 import { fetchEpisodesBySeries } from '../lib/episodeService';
 import { useAuth } from '../contexts/AuthContext';
-import { getUserPurchasedSeasons, getSeasonPrice } from '../lib/purchaseService';
+import { getUserPurchasedSeasons } from '../lib/purchaseService';
 import { getSeasonPrices } from '../lib/pricingService';
-import VideoPlayerModal from './VideoPlayerModal';
 import CommentsSection from './CommentsSection';
 import PurchaseModal from './PurchaseModal';
+import SeasonEpisodesPage from './SeasonEpisodesPage';
 
 interface TVSeriesDetailPageProps {
   seriesId: string;
   onBack: () => void;
 }
 
+interface SeasonInfo {
+  seasonNumber: number;
+  episodeCount: number;
+  price: number;
+  isPurchased: boolean;
+  isFree: boolean;
+}
+
 const TVSeriesDetailPage: React.FC<TVSeriesDetailPageProps> = ({ seriesId, onBack }) => {
   const { user, isAdmin } = useAuth();
   const [series, setSeries] = useState<Content | null>(null);
-  const [episodes, setEpisodes] = useState<Episode[]>([]);
-  const [seasonGroups, setSeasonGroups] = useState<SeasonGroup[]>([]);
-  const [expandedSeasons, setExpandedSeasons] = useState<Set<number>>(new Set([1])); // First season expanded by default
+  const [seasons, setSeasons] = useState<SeasonInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [isPlayerOpen, setPlayerOpen] = useState(false);
-  const [selectedEpisode, setSelectedEpisode] = useState<Episode | null>(null);
-  const [purchasedSeasons, setPurchasedSeasons] = useState<number[]>([]);
-  const [seasonPrices, setSeasonPricesState] = useState<Record<number, number>>({});
+  
+  // Purchase Modal State
   const [isPurchaseModalOpen, setPurchaseModalOpen] = useState(false);
   const [selectedSeasonForPurchase, setSelectedSeasonForPurchase] = useState<number | null>(null);
   const [selectedSeasonPrice, setSelectedSeasonPrice] = useState(0);
+  
+  // Season Episodes Page State
+  const [viewingSeason, setViewingSeason] = useState<number | null>(null);
 
   useEffect(() => {
     loadSeriesData();
-  }, [seriesId]);
-
-  useEffect(() => {
-    loadPurchasedSeasons();
-  }, [series, user, isAdmin]);
+  }, [seriesId, user, isAdmin]);
 
   const loadSeriesData = async () => {
     setLoading(true);
@@ -60,13 +63,15 @@ const TVSeriesDetailPage: React.FC<TVSeriesDetailPageProps> = ({ seriesId, onBac
 
       setSeries(seriesData as Content);
 
-      // Load episodes
-      const episodesData = await fetchEpisodesBySeries(seriesId, 'published');
-      setEpisodes(episodesData);
-
+      // Load all episodes to get season info
+      const allEpisodes = await fetchEpisodesBySeries(seriesId, 'published');
+      
       // Group episodes by season
-      const grouped = groupEpisodesBySeason(episodesData);
-      setSeasonGroups(grouped);
+      const seasonMap = new Map<number, number>();
+      allEpisodes.forEach(ep => {
+        const count = seasonMap.get(ep.season_number) || 0;
+        seasonMap.set(ep.season_number, count + 1);
+      });
 
       // Load season prices
       const prices = await getSeasonPrices(seriesId);
@@ -74,13 +79,35 @@ const TVSeriesDetailPage: React.FC<TVSeriesDetailPageProps> = ({ seriesId, onBac
       prices.forEach((sp: SeasonPrice) => {
         priceMap[sp.season_number] = sp.price;
       });
-      // Use default price from content if no specific season price
-      grouped.forEach(sg => {
-        if (!priceMap[sg.seasonNumber]) {
-          priceMap[sg.seasonNumber] = seriesData.price || 0;
-        }
+
+      // Load purchased seasons for user
+      let purchasedSeasons: number[] = [];
+      if (isAdmin) {
+        purchasedSeasons = Array.from(seasonMap.keys());
+      } else if (user) {
+        purchasedSeasons = await getUserPurchasedSeasons(seriesId, user.id);
+      }
+
+      // Build season info array
+      const seasonInfos: SeasonInfo[] = [];
+      seasonMap.forEach((episodeCount, seasonNumber) => {
+        const price = priceMap[seasonNumber] ?? (seriesData.price || 0);
+        const isFree = price === 0;
+        const isPurchased = isAdmin || isFree || purchasedSeasons.includes(seasonNumber);
+        
+        seasonInfos.push({
+          seasonNumber,
+          episodeCount,
+          price,
+          isPurchased,
+          isFree
+        });
       });
-      setSeasonPricesState(priceMap);
+
+      // Sort by season number
+      seasonInfos.sort((a, b) => a.seasonNumber - b.seasonNumber);
+      setSeasons(seasonInfos);
+
     } catch (err: any) {
       console.error('Error loading TV series:', err);
       setError(err.message || 'Failed to load TV series');
@@ -89,82 +116,16 @@ const TVSeriesDetailPage: React.FC<TVSeriesDetailPageProps> = ({ seriesId, onBac
     }
   };
 
-  const loadPurchasedSeasons = async () => {
-    if (!series) return;
-
-    // Admins have access to all seasons
-    if (isAdmin) {
-      const allSeasons = seasonGroups.map(sg => sg.seasonNumber);
-      setPurchasedSeasons(allSeasons);
-      return;
-    }
-
-    // Check purchased seasons for user
-    if (user) {
-      const purchased = await getUserPurchasedSeasons(series.id, user.id);
-      setPurchasedSeasons(purchased);
+  const handleSeasonClick = (season: SeasonInfo) => {
+    if (season.isPurchased) {
+      // User has access - go to episodes page
+      setViewingSeason(season.seasonNumber);
     } else {
-      setPurchasedSeasons([]);
-    }
-  };
-
-  const hasSeasonAccess = (seasonNumber: number): boolean => {
-    if (isAdmin) return true;
-    const price = seasonPrices[seasonNumber] || 0;
-    if (price === 0) return true; // Free season
-    return purchasedSeasons.includes(seasonNumber);
-  };
-
-  const groupEpisodesBySeason = (episodes: Episode[]): SeasonGroup[] => {
-    const groups: SeasonGroup[] = [];
-    
-    episodes.forEach(episode => {
-      const existingGroup = groups.find(g => g.seasonNumber === episode.season_number);
-      if (existingGroup) {
-        existingGroup.episodes.push(episode);
-      } else {
-        groups.push({
-          seasonNumber: episode.season_number,
-          episodes: [episode]
-        });
-      }
-    });
-
-    // Sort seasons and episodes
-    groups.sort((a, b) => a.seasonNumber - b.seasonNumber);
-    groups.forEach(group => {
-      group.episodes.sort((a, b) => a.episode_number - b.episode_number);
-    });
-
-    return groups;
-  };
-
-  const toggleSeason = (seasonNumber: number) => {
-    const newExpanded = new Set(expandedSeasons);
-    if (newExpanded.has(seasonNumber)) {
-      newExpanded.delete(seasonNumber);
-    } else {
-      newExpanded.add(seasonNumber);
-    }
-    setExpandedSeasons(newExpanded);
-  };
-
-  const handlePlayEpisode = (episode: Episode) => {
-    if (hasSeasonAccess(episode.season_number)) {
-      setSelectedEpisode(episode);
-      setPlayerOpen(true);
-    } else {
-      // Show purchase modal for this season
-      setSelectedSeasonForPurchase(episode.season_number);
-      setSelectedSeasonPrice(seasonPrices[episode.season_number] || 0);
+      // User needs to purchase - show modal
+      setSelectedSeasonForPurchase(season.seasonNumber);
+      setSelectedSeasonPrice(season.price);
       setPurchaseModalOpen(true);
     }
-  };
-
-  const handleBuySeason = (seasonNumber: number) => {
-    setSelectedSeasonForPurchase(seasonNumber);
-    setSelectedSeasonPrice(seasonPrices[seasonNumber] || 0);
-    setPurchaseModalOpen(true);
   };
 
   const extractYouTubeId = (url: string) => {
@@ -172,6 +133,21 @@ const TVSeriesDetailPage: React.FC<TVSeriesDetailPageProps> = ({ seriesId, onBac
     const match = url.match(regex);
     return match ? match[1] : null;
   };
+
+  // If viewing a season's episodes, show that page
+  if (viewingSeason !== null && series) {
+    return (
+      <SeasonEpisodesPage
+        series={series}
+        seasonNumber={viewingSeason}
+        onBack={() => {
+          setViewingSeason(null);
+          // Reload data in case purchase was made
+          loadSeriesData();
+        }}
+      />
+    );
+  }
 
   if (loading) {
     return (
@@ -265,9 +241,9 @@ const TVSeriesDetailPage: React.FC<TVSeriesDetailPageProps> = ({ seriesId, onBac
                     <span>{series.language}</span>
                   </div>
                 )}
-                {seasonGroups.length > 0 && (
+                {seasons.length > 0 && (
                   <span className="px-3 py-1 bg-white/10 rounded-full text-sm">
-                    {seasonGroups.length} Season{seasonGroups.length !== 1 ? 's' : ''}
+                    {seasons.length} Season{seasons.length !== 1 ? 's' : ''}
                   </span>
                 )}
               </div>
@@ -316,125 +292,98 @@ const TVSeriesDetailPage: React.FC<TVSeriesDetailPageProps> = ({ seriesId, onBac
           )}
         </div>
 
-        {/* Episodes Section */}
+        {/* Seasons Section */}
         <div>
-          <h2 className="text-2xl font-bold text-white mb-6">Episodes</h2>
+          <h2 className="text-2xl font-bold text-white mb-6">Seasons</h2>
           
-          {seasonGroups.length === 0 ? (
+          {seasons.length === 0 ? (
             <div className="bg-white/5 rounded-lg p-8 text-center">
-              <p className="text-gray-400">No episodes available yet</p>
+              <p className="text-gray-400">No seasons available yet</p>
             </div>
           ) : (
-            <div className="space-y-4">
-              {seasonGroups.map((seasonGroup) => (
-                <div key={seasonGroup.seasonNumber} className="bg-white/5 rounded-lg overflow-hidden">
-                  {/* Season Header */}
-                  <div className="flex items-center justify-between p-6 hover:bg-white/10 transition-colors">
-                    <button
-                      onClick={() => toggleSeason(seasonGroup.seasonNumber)}
-                      className="flex items-center gap-4 flex-1"
-                    >
-                      <h3 className="text-xl font-bold text-white">
-                        Season {seasonGroup.seasonNumber}
-                        <span className="text-gray-400 text-sm ml-3">
-                          ({seasonGroup.episodes.length} episode{seasonGroup.episodes.length !== 1 ? 's' : ''})
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+              {seasons.map((season) => (
+                <div
+                  key={season.seasonNumber}
+                  onClick={() => handleSeasonClick(season)}
+                  className={`relative bg-[#111] border rounded-xl overflow-hidden cursor-pointer transition-all hover:scale-105 hover:shadow-xl ${
+                    season.isPurchased 
+                      ? 'border-neon-green/30 hover:border-neon-green' 
+                      : 'border-white/10 hover:border-yellow-500/50'
+                  }`}
+                >
+                  {/* Season Image */}
+                  <div className="relative aspect-[2/3] bg-gray-900">
+                    <img
+                      src={series.poster_url}
+                      alt={`Season ${season.seasonNumber}`}
+                      className={`w-full h-full object-cover ${!season.isPurchased ? 'opacity-60' : ''}`}
+                    />
+                    
+                    {/* Overlay for locked seasons */}
+                    {!season.isPurchased && (
+                      <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                        <div className="text-center">
+                          <Lock size={48} className="text-yellow-500 mx-auto mb-2" />
+                          <p className="text-white font-bold">Locked</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Play overlay for unlocked seasons */}
+                    {season.isPurchased && (
+                      <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
+                        <div className="w-16 h-16 rounded-full bg-neon-green flex items-center justify-center">
+                          <Play size={32} className="text-black ml-1" fill="currentColor" />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Season Badge */}
+                    <div className="absolute top-3 left-3 bg-black/80 px-3 py-1 rounded-full">
+                      <span className="text-neon-green font-bold">Season {season.seasonNumber}</span>
+                    </div>
+
+                    {/* Status Badge */}
+                    <div className="absolute top-3 right-3">
+                      {season.isFree ? (
+                        <span className="bg-neon-green text-black px-2 py-1 rounded-full text-xs font-bold">
+                          FREE
                         </span>
-                      </h3>
-                      {!hasSeasonAccess(seasonGroup.seasonNumber) && (
-                        <span className="flex items-center gap-1 text-yellow-500 text-sm">
-                          <Lock size={14} />
-                          Locked
+                      ) : season.isPurchased ? (
+                        <span className="bg-neon-green text-black px-2 py-1 rounded-full text-xs font-bold">
+                          OWNED
+                        </span>
+                      ) : (
+                        <span className="bg-yellow-500 text-black px-2 py-1 rounded-full text-xs font-bold">
+                          Rs. {season.price.toLocaleString()}
                         </span>
                       )}
-                    </button>
-                    <div className="flex items-center gap-4">
-                      {!hasSeasonAccess(seasonGroup.seasonNumber) && seasonPrices[seasonGroup.seasonNumber] > 0 && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleBuySeason(seasonGroup.seasonNumber);
-                          }}
-                          className="px-4 py-2 bg-gradient-to-r from-yellow-500 to-orange-500 text-black rounded-lg font-semibold hover:from-yellow-400 hover:to-orange-400 transition-all flex items-center gap-2"
-                        >
-                          <ShoppingCart size={16} />
-                          Buy Rs. {seasonPrices[seasonGroup.seasonNumber]?.toLocaleString()}
-                        </button>
-                      )}
-                      <button onClick={() => toggleSeason(seasonGroup.seasonNumber)}>
-                        {expandedSeasons.has(seasonGroup.seasonNumber) ? (
-                          <ChevronUp className="text-neon-green" size={24} />
-                        ) : (
-                          <ChevronDown className="text-gray-400" size={24} />
-                        )}
-                      </button>
                     </div>
                   </div>
 
-                  {/* Episodes List */}
-                  {expandedSeasons.has(seasonGroup.seasonNumber) && (
-                    <div className="border-t border-white/10">
-                      {seasonGroup.episodes.map((episode) => (
-                        <div
-                          key={episode.id}
-                          className="flex items-center gap-4 p-4 hover:bg-white/5 transition-colors border-b border-white/5 last:border-b-0"
-                        >
-                          {/* Episode Thumbnail */}
-                          <div className="relative w-40 h-24 flex-shrink-0 bg-white/10 rounded overflow-hidden group cursor-pointer"
-                            onClick={() => handlePlayEpisode(episode)}
-                          >
-                            <img
-                              src={episode.thumbnail_url || series.poster_url}
-                              alt={episode.title}
-                              className="w-full h-full object-cover"
-                            />
-                            <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                              <Play size={32} className="text-neon-green" fill="currentColor" />
-                            </div>
-                          </div>
+                  {/* Season Info */}
+                  <div className="p-4">
+                    <h3 className="text-xl font-bold text-white mb-1">
+                      Season {season.seasonNumber}
+                    </h3>
+                    <p className="text-gray-400 text-sm mb-3">
+                      {season.episodeCount} Episode{season.episodeCount !== 1 ? 's' : ''}
+                    </p>
 
-                          {/* Episode Info */}
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className="text-neon-green font-semibold">
-                                S{episode.season_number.toString().padStart(2, '0')}E{episode.episode_number.toString().padStart(2, '0')}
-                              </span>
-                              {episode.duration && (
-                                <span className="text-gray-400 text-sm flex items-center gap-1">
-                                  <Clock size={14} />
-                                  {episode.duration}
-                                </span>
-                              )}
-                            </div>
-                            <h4 className="text-white font-semibold mb-1 truncate">
-                              {episode.title}
-                            </h4>
-                            <p className="text-gray-400 text-sm line-clamp-2">
-                              {episode.description}
-                            </p>
-                          </div>
-
-                          {/* Watch/Locked Button */}
-                          {hasSeasonAccess(episode.season_number) ? (
-                            <button
-                              onClick={() => handlePlayEpisode(episode)}
-                              className="px-4 py-2 bg-neon-green text-black rounded-lg font-semibold hover:bg-neon-green/80 transition-colors flex items-center gap-2 flex-shrink-0"
-                            >
-                              <Play size={16} fill="currentColor" />
-                              Watch
-                            </button>
-                          ) : (
-                            <button
-                              onClick={() => handlePlayEpisode(episode)}
-                              className="px-4 py-2 bg-gray-700 text-gray-300 rounded-lg font-semibold hover:bg-gray-600 transition-colors flex items-center gap-2 flex-shrink-0"
-                            >
-                              <Lock size={16} />
-                              Locked
-                            </button>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                    {/* Action Button */}
+                    {season.isPurchased ? (
+                      <button className="w-full bg-neon-green text-black py-2 rounded-lg font-bold hover:bg-neon-green/80 transition-colors flex items-center justify-center gap-2">
+                        <Play size={18} fill="currentColor" />
+                        Watch Now
+                      </button>
+                    ) : (
+                      <button className="w-full bg-gradient-to-r from-yellow-500 to-orange-500 text-black py-2 rounded-lg font-bold hover:from-yellow-400 hover:to-orange-400 transition-colors flex items-center justify-center gap-2">
+                        <ShoppingCart size={18} />
+                        Buy Rs. {season.price.toLocaleString()}
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
@@ -470,19 +419,6 @@ const TVSeriesDetailPage: React.FC<TVSeriesDetailPageProps> = ({ seriesId, onBac
         <CommentsSection contentId={series.id} />
       </div>
 
-      {/* Video Player Modal */}
-      {selectedEpisode && hasSeasonAccess(selectedEpisode.season_number) && (
-        <VideoPlayerModal
-          isOpen={isPlayerOpen}
-          videoUrl={selectedEpisode.video_url}
-          title={`${series.title} - S${selectedEpisode.season_number.toString().padStart(2, '0')}E${selectedEpisode.episode_number.toString().padStart(2, '0')}: ${selectedEpisode.title}`}
-          onClose={() => {
-            setPlayerOpen(false);
-            setSelectedEpisode(null);
-          }}
-        />
-      )}
-
       {/* Purchase Modal */}
       {series && selectedSeasonForPurchase !== null && (
         <PurchaseModal
@@ -493,6 +429,8 @@ const TVSeriesDetailPage: React.FC<TVSeriesDetailPageProps> = ({ seriesId, onBac
           onClose={() => {
             setPurchaseModalOpen(false);
             setSelectedSeasonForPurchase(null);
+            // Reload data in case purchase was made
+            loadSeriesData();
           }}
         />
       )}
@@ -501,4 +439,3 @@ const TVSeriesDetailPage: React.FC<TVSeriesDetailPageProps> = ({ seriesId, onBac
 };
 
 export default TVSeriesDetailPage;
-
