@@ -38,6 +38,47 @@ const TVSeriesDetailPage: React.FC<TVSeriesDetailPageProps> = ({ seriesId, onBac
   // Season Episodes Page State
   const [viewingSeason, setViewingSeason] = useState<number | null>(null);
 
+  // Initialize season from URL on load
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const season = urlParams.get('season');
+    if (season) {
+      setViewingSeason(parseInt(season));
+    }
+  }, []);
+
+  // Handle browser back/forward for season navigation
+  useEffect(() => {
+    const handlePopState = () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const season = urlParams.get('season');
+      if (season) {
+        setViewingSeason(parseInt(season));
+      } else {
+        setViewingSeason(null);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  // Navigate to season with URL update
+  const navigateToSeason = (seasonNumber: number) => {
+    setViewingSeason(seasonNumber);
+    const url = `/tv-series?id=${seriesId}&season=${seasonNumber}`;
+    window.history.pushState({ season: seasonNumber }, '', url);
+  };
+
+  // Navigate back from season with URL update
+  const navigateBackFromSeason = () => {
+    setViewingSeason(null);
+    const url = `/tv-series?id=${seriesId}`;
+    window.history.pushState({ season: null }, '', url);
+    // Reload data in case purchase was made
+    loadSeriesData();
+  };
+
   useEffect(() => {
     loadSeriesData();
   }, [seriesId, user, isAdmin]);
@@ -119,7 +160,7 @@ const TVSeriesDetailPage: React.FC<TVSeriesDetailPageProps> = ({ seriesId, onBac
   const handleSeasonClick = (season: SeasonInfo) => {
     if (season.isPurchased) {
       // User has access - go to episodes page
-      setViewingSeason(season.seasonNumber);
+      navigateToSeason(season.seasonNumber);
     } else {
       // User needs to purchase - show modal
       setSelectedSeasonForPurchase(season.seasonNumber);
@@ -140,11 +181,7 @@ const TVSeriesDetailPage: React.FC<TVSeriesDetailPageProps> = ({ seriesId, onBac
       <SeasonEpisodesPage
         series={series}
         seasonNumber={viewingSeason}
-        onBack={() => {
-          setViewingSeason(null);
-          // Reload data in case purchase was made
-          loadSeriesData();
-        }}
+        onBack={navigateBackFromSeason}
       />
     );
   }

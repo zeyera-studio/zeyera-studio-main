@@ -30,6 +30,38 @@ const MOCK_DATA: ContentItem[] = [
 
 type PageType = 'home' | 'movies' | 'tv' | 'admin' | 'movieDetail' | 'tvDetail' | 'myPurchases' | 'paymentResult';
 
+// URL path mapping
+const PAGE_PATHS: Record<PageType, string> = {
+  home: '/',
+  movies: '/movies',
+  tv: '/tv-series',
+  admin: '/admin',
+  movieDetail: '/movie',
+  tvDetail: '/tv-series',
+  myPurchases: '/my-purchases',
+  paymentResult: '/payment',
+};
+
+// Parse URL to get page and content ID
+const parseURL = (): { page: PageType; contentId: string | null } => {
+  const path = window.location.pathname;
+  const urlParams = new URLSearchParams(window.location.search);
+  const contentId = urlParams.get('id');
+  
+  if (path.startsWith('/movie') && contentId) {
+    return { page: 'movieDetail', contentId };
+  }
+  if (path.startsWith('/tv-series') && contentId) {
+    return { page: 'tvDetail', contentId };
+  }
+  if (path === '/movies') return { page: 'movies', contentId: null };
+  if (path === '/tv-series') return { page: 'tv', contentId: null };
+  if (path === '/admin') return { page: 'admin', contentId: null };
+  if (path === '/my-purchases') return { page: 'myPurchases', contentId: null };
+  
+  return { page: 'home', contentId: null };
+};
+
 const AppContent: React.FC = () => {
   const [content, setContent] = useState<ContentItem[]>(MOCK_DATA);
   const [isSearching, setIsSearching] = useState(false);
@@ -38,12 +70,13 @@ const AppContent: React.FC = () => {
   const [paymentStatus, setPaymentStatus] = useState<'success' | 'cancelled' | 'error'>('success');
   const [paymentOrderId, setPaymentOrderId] = useState<string>('');
 
-  // Check for payment return from PayHere
+  // Initialize from URL on first load
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const payment = urlParams.get('payment');
     const orderId = urlParams.get('order_id');
 
+    // Check for payment return from PayHere
     if (payment && orderId) {
       setPaymentOrderId(orderId);
       if (payment === 'success') {
@@ -54,10 +87,37 @@ const AppContent: React.FC = () => {
         setPaymentStatus('error');
       }
       setCurrentPage('paymentResult');
-      
-      // Clean up URL
-      window.history.replaceState({}, '', window.location.pathname);
+      // Clean up URL but keep in history
+      window.history.replaceState({ page: 'paymentResult' }, '', '/payment');
+      return;
     }
+
+    // Parse URL for initial page
+    const { page, contentId } = parseURL();
+    setCurrentPage(page);
+    setSelectedContentId(contentId);
+    
+    // Replace current history entry with state
+    window.history.replaceState({ page, contentId }, '', window.location.pathname + window.location.search);
+  }, []);
+
+  // Listen for browser back/forward buttons
+  useEffect(() => {
+    const handlePopState = (event: PopStateEvent) => {
+      if (event.state) {
+        const { page, contentId } = event.state;
+        setCurrentPage(page || 'home');
+        setSelectedContentId(contentId || null);
+      } else {
+        // No state - parse from URL
+        const { page, contentId } = parseURL();
+        setCurrentPage(page);
+        setSelectedContentId(contentId);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
   const handleSearch = async (query: string) => {
@@ -83,7 +143,19 @@ const AppContent: React.FC = () => {
     setCurrentPage(page);
     if (contentId) {
       setSelectedContentId(contentId);
+    } else if (page !== 'movieDetail' && page !== 'tvDetail') {
+      setSelectedContentId(null);
     }
+    
+    // Build URL for the new page
+    let url = PAGE_PATHS[page] || '/';
+    if (contentId && (page === 'movieDetail' || page === 'tvDetail')) {
+      url = `${page === 'movieDetail' ? '/movie' : '/tv-series'}?id=${contentId}`;
+    }
+    
+    // Push to browser history
+    window.history.pushState({ page, contentId: contentId || null }, '', url);
+    
     // Scroll to top on navigation
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
