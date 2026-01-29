@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabaseClient';
-import { Users, Film, Activity, Settings, Search, UserPlus, Shield, Trash2, LogOut, Upload, Eye, Edit, CheckCircle, XCircle, Archive, Tv, List } from 'lucide-react';
+import { Users, Film, Activity, Settings, Search, UserPlus, Shield, Trash2, LogOut, Upload, Eye, Edit, CheckCircle, XCircle, Archive, Tv, List, ArrowLeft, Home } from 'lucide-react';
 import { UserProfile, Content, ContentStats } from '../types';
 import UploadContentModal from './UploadContentModal';
 import EpisodeManagement from './EpisodeManagement';
@@ -29,6 +29,38 @@ const AdminDashboard: React.FC = () => {
   const [episodeCounts, setEpisodeCounts] = useState<Record<string, number>>({});
   const [contentLoading, setContentLoading] = useState(false);
   const [selectedSeries, setSelectedSeries] = useState<Content | null>(null);
+
+  // Initialize tab from URL
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const tab = urlParams.get('tab') as 'overview' | 'users' | 'movies' | 'tvseries';
+    if (tab && ['overview', 'users', 'movies', 'tvseries'].includes(tab)) {
+      setActiveTab(tab);
+    }
+  }, []);
+
+  // Handle browser back/forward for tabs
+  useEffect(() => {
+    const handlePopState = () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const tab = urlParams.get('tab') as 'overview' | 'users' | 'movies' | 'tvseries';
+      if (tab && ['overview', 'users', 'movies', 'tvseries'].includes(tab)) {
+        setActiveTab(tab);
+      } else {
+        setActiveTab('overview');
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  // Update URL when tab changes
+  const handleTabChange = (tab: 'overview' | 'users' | 'movies' | 'tvseries') => {
+    setActiveTab(tab);
+    const url = tab === 'overview' ? '/admin' : `/admin?tab=${tab}`;
+    window.history.pushState({ tab }, '', url);
+  };
 
   useEffect(() => {
     if (activeTab === 'users') {
@@ -223,31 +255,45 @@ const AdminDashboard: React.FC = () => {
             <h2 className="text-xl font-black tracking-wider text-white">Admin<span className="text-neon-green">Panel</span></h2>
             <p className="text-xs text-gray-500 mt-1">v2.0.1 System Active</p>
         </div>
+
+        {/* Back to Site Button */}
+        <div className="px-4 mb-4">
+          <button
+            onClick={() => {
+              window.history.pushState({}, '', '/');
+              window.location.href = '/';
+            }}
+            className="flex items-center gap-2 w-full px-4 py-2 text-gray-400 hover:text-neon-green hover:bg-white/5 rounded-lg transition-colors"
+          >
+            <ArrowLeft size={16} />
+            <span className="text-sm">Back to Site</span>
+          </button>
+        </div>
         
         <nav className="flex-1 px-4 space-y-2">
             <button 
-                onClick={() => setActiveTab('overview')}
+                onClick={() => handleTabChange('overview')}
                 className={`flex items-center gap-3 w-full px-4 py-3 rounded-lg transition-colors ${activeTab === 'overview' ? 'bg-neon-green/10 text-neon-green border border-neon-green/20' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
             >
                 <Activity size={18} />
                 <span className="font-medium text-sm">Overview</span>
             </button>
             <button 
-                onClick={() => setActiveTab('users')}
+                onClick={() => handleTabChange('users')}
                 className={`flex items-center gap-3 w-full px-4 py-3 rounded-lg transition-colors ${activeTab === 'users' ? 'bg-neon-green/10 text-neon-green border border-neon-green/20' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
             >
                 <Users size={18} />
                 <span className="font-medium text-sm">User Management</span>
             </button>
             <button 
-                onClick={() => setActiveTab('movies')}
+                onClick={() => handleTabChange('movies')}
                 className={`flex items-center gap-3 w-full px-4 py-3 rounded-lg transition-colors ${activeTab === 'movies' ? 'bg-neon-green/10 text-neon-green border border-neon-green/20' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
             >
                 <Film size={18} />
                 <span className="font-medium text-sm">Movies</span>
             </button>
             <button 
-                onClick={() => setActiveTab('tvseries')}
+                onClick={() => handleTabChange('tvseries')}
                 className={`flex items-center gap-3 w-full px-4 py-3 rounded-lg transition-colors ${activeTab === 'tvseries' ? 'bg-neon-green/10 text-neon-green border border-neon-green/20' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
             >
                 <Tv size={18} />
